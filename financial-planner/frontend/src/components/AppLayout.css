@@ -80,15 +80,31 @@
   gap: 16px;
 }
 
+.user-profile-widget {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 4px 4px 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all var(--transition-fast, 0.2s);
+}
+
+.user-profile-widget:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 .user-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .user-avatar {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: var(--accent-gradient);
   display: flex;
@@ -106,21 +122,23 @@
 }
 
 .logout-btn {
-  background: transparent;
+  background: rgba(239, 68, 68, 0.1);
   border: none;
-  color: var(--text-muted);
+  color: var(--danger, #ef4444);
   cursor: pointer;
-  padding: 8px;
-  border-radius: var(--radius-sm);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 0.2s);
+  padding: 0;
 }
 
 .logout-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--danger);
+  background: var(--danger, #ef4444);
+  color: white;
 }
 
 .app-main-content {

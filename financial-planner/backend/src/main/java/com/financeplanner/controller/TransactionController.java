@@ -3,7 +3,6 @@ package com.financeplanner.controller;
 import com.financeplanner.entity.Transaction;
 import com.financeplanner.entity.User;
 import com.financeplanner.repository.TransactionRepository;
-import com.financeplanner.service.CsvParserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +20,7 @@ import java.util.Map;
 public class TransactionController {
 
     private final TransactionRepository txnRepo;
-    private final CsvParserService csvParser;
+    private final com.financeplanner.service.BankStatementService bankStatementService;
     private final com.financeplanner.service.ReconciliationService reconciliationService;
 
     @GetMapping
@@ -68,26 +67,22 @@ public class TransactionController {
     }
 
     @PostMapping("/upload")
-    public ResponseEntity<?> uploadCsv(@RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user) {
+    public ResponseEntity<?> uploadStatement(@RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user) {
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
         }
-        if (!file.getOriginalFilename().endsWith(".csv")) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Only CSV files are accepted"));
-        }
         try {
-            List<Transaction> parsed = csvParser.parseCsv(file);
-            parsed.forEach(t -> t.setUser(user));
+            List<Transaction> parsed = bankStatementService.parseStatement(file, user);
             List<Transaction> saved = txnRepo.saveAll(parsed);
-            log.info("Imported {} transactions from CSV: {}", saved.size(), file.getOriginalFilename());
+            log.info("Imported {} transactions from file: {}", saved.size(), file.getOriginalFilename());
             return ResponseEntity.ok(Map.of(
                     "imported", saved.size(),
                     "transactions", saved
             ));
         } catch (Exception e) {
-            log.error("CSV import failed", e);
+            log.error("Statement import failed", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to parse CSV: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to parse statement: " + e.getMessage()));
         }
     }
 
@@ -96,12 +91,8 @@ public class TransactionController {
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
         }
-        if (!file.getOriginalFilename().endsWith(".csv")) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Only CSV files are accepted"));
-        }
         try {
-            List<Transaction> parsed = csvParser.parseCsv(file);
-            parsed.forEach(t -> t.setUser(user));
+            List<Transaction> parsed = bankStatementService.parseStatement(file, user);
             List<Transaction> saved = txnRepo.saveAll(parsed);
             
             // Trigger Reconciliation Engine
@@ -110,9 +101,9 @@ public class TransactionController {
             
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            log.error("CSV reconciliation failed", e);
+            log.error("Statement reconciliation failed", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to reconcile CSV: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to reconcile statement: " + e.getMessage()));
         }
     }
 }

@@ -170,10 +170,36 @@ export default function OnboardingPage() {
             className="btn btn-secondary" 
             style={{ padding: '6px 12px', fontSize: '13px' }}
             onClick={() => {
-              if(window.confirm('Are you sure you want to skip the onboarding process? You will have to configure everything manually on the dashboard.')) {
-                localStorage.setItem('hasCompletedOnboarding', 'true');
-                navigate('/');
-              }
+              toast((t) => (
+                <div>
+                  <div style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--text-primary)', fontWeight: '500' }}>
+                    Are you sure you want to skip?
+                  </div>
+                  <div style={{ marginBottom: '16px', fontSize: '13px', color: 'var(--text-muted)' }}>
+                    You will have to configure everything manually on the dashboard.
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <button 
+                      className="btn btn-secondary" 
+                      style={{ padding: '6px 12px', fontSize: '12px' }}
+                      onClick={() => toast.dismiss(t.id)}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      className="btn btn-primary" 
+                      style={{ padding: '6px 12px', fontSize: '12px', background: 'var(--danger-color, #ef4444)', border: 'none' }}
+                      onClick={() => {
+                        toast.dismiss(t.id);
+                        localStorage.setItem('hasCompletedOnboarding', 'true');
+                        navigate('/');
+                      }}
+                    >
+                      Yes, Skip
+                    </button>
+                  </div>
+                </div>
+              ), { duration: Infinity, id: 'skip-onboarding-toast' });
             }}
           >
             Skip Onboarding

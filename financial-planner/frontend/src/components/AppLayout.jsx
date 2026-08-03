@@ -1,5 +1,9 @@
+import { useState, useEffect } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
+import { chatApi } from '../services/api';
+import ChatBox from './Chat/ChatBox';
 import './AppLayout.css';
 
 const NAV_ITEMS = [
@@ -22,6 +26,53 @@ const NAV_ITEMS = [
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  const [userCoachInfo, setUserCoachInfo] = useState(null);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const { notifications } = useNotifications();
+  const [showNotificationsMenu, setShowNotificationsMenu] = useState(false);
+
+  useEffect(() => {
+    if (user?.role === 'ROLE_USER') {
+      // Fetch assigned coach info
+      chatApi.getMyCoach()
+        .then(res => {
+          if (res.data && res.data.id) {
+            setUserCoachInfo({ coachId: res.data.id, coachName: res.data.name, hasCoach: true });
+          } else if (user?.assignedCoachName) {
+            setUserCoachInfo({ hasCoach: true, coachId: user.assignedCoachId, coachName: user.assignedCoachName });
+          }
+        })
+        .catch(() => {
+          if (user?.assignedCoachName) {
+            setUserCoachInfo({ hasCoach: true, coachId: user.assignedCoachId, coachName: user.assignedCoachName });
+          }
+        });
+
+      // Load initial unread count
+      chatApi.getUnreadCount()
+        .then(res => setUnreadCount(res.data.unreadCount || 0))
+        .catch(console.error);
+    }
+  }, [user]);
+
+  const handleOpenChat = () => {
+    setShowChatModal(true);
+    setUnreadCount(0);
+  };
+
+  const handleCloseChat = () => {
+    setShowChatModal(false);
+  };
+
+  // Called by ChatBox when a message from a different sender arrives while chat is open
+  const handleBackgroundMessage = () => {
+    setUnreadCount(prev => prev + 1);
+  };
+
+  const coachPartner = userCoachInfo
+    ? { id: userCoachInfo.coachId || user?.assignedCoachId, name: userCoachInfo.coachName || user?.assignedCoachName, role: 'ROLE_COACH' }
+    : null;
 
   return (
     <div className="app-layout">
@@ -30,7 +81,7 @@ export default function AppLayout() {
           <div className="logo-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
-          <div className="logo-text">FinancePlanner</div>
+          <div className="logo-text">LiFi</div>
         </div>
 
         <nav className="topbar-nav">
@@ -47,23 +98,190 @@ export default function AppLayout() {
         </nav>
 
         <div className="topbar-user">
-          <div className="user-info">
-            <div className="user-avatar">{user?.username?.charAt(0).toUpperCase()}</div>
-            <span className="user-name">{user?.name}</span>
+          {userCoachInfo?.hasCoach && (
+            <div className="user-coach-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '1rem' }}>
+              <div className="user-coach" style={{ padding: '0.3rem 0.8rem', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '20px', fontSize: '0.85rem', color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span title="Assigned Coach">🎓 Coach: {userCoachInfo.coachName || user?.assignedCoachName}</span>
+              </div>
+              <button
+                className="chat-with-coach-btn"
+                onClick={handleOpenChat}
+                style={{
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '20px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  position: 'relative'
+                }}
+              >
+                💬 Chat
+                {unreadCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: '#ef4444',
+                    color: 'white',
+                    borderRadius: '50%',
+                    minWidth: '18px',
+                    height: '18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.65rem',
+                    fontWeight: 'bold',
+                    padding: '0 4px'
+                  }}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+          
+          {/* Notifications Bell */}
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setShowNotificationsMenu(!showNotificationsMenu)}
+              style={{
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: 'none',
+                color: 'var(--info, #3b82f6)',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                marginRight: '0.5rem',
+                position: 'relative'
+              }}
+              title="Notifications"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              {notifications && notifications.length > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '0',
+                  right: '0',
+                  width: '14px',
+                  height: '14px',
+                  background: 'var(--danger, #ef4444)',
+                  color: 'white',
+                  borderRadius: '50%',
+                  fontSize: '9px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold'
+                }}>
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+            
+            {showNotificationsMenu && (
+              <div style={{
+                position: 'absolute',
+                top: '120%',
+                right: '0',
+                width: '320px',
+                background: 'var(--bg-card, #1e1e2d)',
+                border: '1px solid var(--border-subtle, #2b2b3a)',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                zIndex: 100,
+                padding: '0.5rem',
+                maxHeight: '400px',
+                overflowY: 'auto'
+              }}>
+                <div style={{ padding: '0.5rem', fontWeight: 'bold', borderBottom: '1px solid var(--border-subtle, #2b2b3a)', marginBottom: '0.5rem' }}>
+                  Notifications
+                </div>
+                {(!notifications || notifications.length === 0) ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted, #9ca3af)', fontSize: '0.85rem' }}>
+                    No notifications
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {notifications.map((n, i) => (
+                      <div key={i} style={{ 
+                        display: 'flex', 
+                        gap: '0.5rem',
+                        padding: '0.75rem',
+                        background: 'var(--bg-input, #252536)',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ 
+                          width: '8px', 
+                          height: '8px', 
+                          borderRadius: '50%', 
+                          marginTop: '4px',
+                          flexShrink: 0,
+                          background: n.type === 'danger' ? 'var(--danger, #ef4444)' : 
+                                      n.type === 'warning' ? 'var(--warning, #f59e0b)' : 
+                                      n.type === 'success' ? 'var(--success, #10b981)' : 'var(--info, #3b82f6)'
+                        }} />
+                        <div>
+                          <div style={{ fontSize: '0.85rem', lineHeight: 1.4, color: 'var(--text-secondary, #d1d5db)' }}>{n.text}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #9ca3af)', marginTop: '4px' }}>{n.time}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <button className="logout-btn" onClick={logout} title="Logout">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-          </button>
+
+          <div className="user-profile-widget">
+            <div className="user-info">
+              <div className="user-avatar">{user?.name?.charAt(0).toUpperCase()}</div>
+              <span className="user-name">{user?.name}</span>
+            </div>
+            <button className="logout-btn" onClick={logout} title="Logout">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="app-main-content">
         <Outlet />
       </main>
+
+      {/* Chat with Coach Modal Overlay */}
+      {showChatModal && coachPartner && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: '1rem'
+          }}
+          onClick={handleCloseChat}
+        >
+          <div style={{ width: '100%', maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
+            <ChatBox
+              partner={coachPartner}
+              onClose={handleCloseChat}
+              onNewMessage={handleBackgroundMessage}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -30,14 +30,20 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const register = async (name, email, password) => {
+  const register = async (payload) => {
     try {
-      const response = await api.post('/auth/register', { name, email, password });
-      const { token, user: userData } = response.data;
-      setUser(userData);
-      localStorage.setItem('finance_user', JSON.stringify(userData));
-      localStorage.setItem('token', token);
-      return userData;
+      const response = await api.post('/auth/register', payload);
+      const { token, user: userData, message } = response.data;
+      
+      if (token) {
+        setUser(userData);
+        localStorage.setItem('finance_user', JSON.stringify(userData));
+        localStorage.setItem('token', token);
+        return { user: userData };
+      } else {
+        // Coach registration flow, pending approval
+        return { message };
+      }
     } catch (error) {
       console.error('Registration failed', error);
       throw error;

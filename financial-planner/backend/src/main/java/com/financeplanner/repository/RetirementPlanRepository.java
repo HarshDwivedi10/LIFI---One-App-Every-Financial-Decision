@@ -8,4 +8,5 @@ import java.util.Optional;
 @Repository
 public interface RetirementPlanRepository extends JpaRepository<RetirementPlan, Long> {
     Optional<RetirementPlan> findTopByUserIdOrderByUpdatedAtDesc(Long userId);
+    java.util.List<RetirementPlan> findByUserId(Long userId);
 }
