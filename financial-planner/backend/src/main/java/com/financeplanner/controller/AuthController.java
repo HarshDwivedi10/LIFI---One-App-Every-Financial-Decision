@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.financeplanner.dto.RegisterRequest;
+import jakarta.validation.Valid;
 import java.util.Map;
 
 @RestController
@@ -19,7 +21,7 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> register(
-            @RequestBody Map<String, String> request
+            @Valid @RequestBody RegisterRequest request
     ) {
         try {
             return ResponseEntity.ok(service.register(request));
@@ -34,8 +36,10 @@ public class AuthController {
     ) {
         try {
             return ResponseEntity.ok(service.login(request));
+        } catch (org.springframework.security.authentication.BadCredentialsException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid email or password"));
         } catch (Exception e) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         }
     }
 }

@@ -41,4 +41,11 @@ public class Goal {
     @Column(name = "acknowledged")
     private Boolean acknowledged = true;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "priority")
+    private Priority priority;
+
+    public enum Priority {
+        HIGH, MEDIUM, LOW
+    }
 }

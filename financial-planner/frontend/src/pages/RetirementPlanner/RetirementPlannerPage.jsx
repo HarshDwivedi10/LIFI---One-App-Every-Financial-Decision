@@ -510,7 +510,7 @@ export default function RetirementPlannerPage() {
                 <label className="form-label">Current Monthly SIP Contribution</label>
                 <div className="input-prefix">
                   <span className="input-prefix-symbol">₹</span>
-                  <input type="number" className="form-input" value={inputs.currentContribution} onChange={e => handleInputChange('currentContribution', e.target.value)} placeholder="e.g. 15000" />
+                  <input type="number" step="any" className="form-input" value={inputs.currentContribution} onChange={e => handleInputChange('currentContribution', e.target.value)} onWheel={e => e.target.blur()} placeholder="e.g. 15000" />
                 </div>
                 {inputs.currentContribution && <div className="input-words-hint">{numberToIndianWords(inputs.currentContribution)}</div>}
                 {errors.currentContribution && <span className="form-error">{errors.currentContribution}</span>}
@@ -521,7 +521,7 @@ export default function RetirementPlannerPage() {
               <label className="form-label">Current Monthly Expenses</label>
               <div className="input-prefix">
                 <span className="input-prefix-symbol">₹</span>
-                <input type="number" className="form-input" value={inputs.currentExpense} onChange={e => handleInputChange('currentExpense', e.target.value)} />
+                <input type="number" step="any" className="form-input" value={inputs.currentExpense} onChange={e => handleInputChange('currentExpense', e.target.value)} onWheel={e => e.target.blur()} />
               </div>
               {inputs.currentExpense && <div className="input-words-hint">{numberToIndianWords(inputs.currentExpense)}</div>}
               {errors.currentExpense && <span className="form-error">{errors.currentExpense}</span>}
@@ -531,7 +531,7 @@ export default function RetirementPlannerPage() {
               <label className="form-label">Current Retirement Savings</label>
               <div className="input-prefix">
                 <span className="input-prefix-symbol">₹</span>
-                <input type="number" className="form-input" value={inputs.currentSavings} onChange={e => handleInputChange('currentSavings', e.target.value)} />
+                <input type="number" step="any" className="form-input" value={inputs.currentSavings} onChange={e => handleInputChange('currentSavings', e.target.value)} onWheel={e => e.target.blur()} />
               </div>
               {inputs.currentSavings && <div className="input-words-hint">{numberToIndianWords(inputs.currentSavings)}</div>}
             </div>
@@ -540,7 +540,7 @@ export default function RetirementPlannerPage() {
               <label className="form-label">Monthly Income (To calculate % savings required)</label>
               <div className="input-prefix">
                 <span className="input-prefix-symbol">₹</span>
-                <input type="number" className="form-input" value={inputs.monthlyIncome} onChange={e => handleInputChange('monthlyIncome', e.target.value)} />
+                <input type="number" step="any" className="form-input" value={inputs.monthlyIncome} onChange={e => handleInputChange('monthlyIncome', e.target.value)} onWheel={e => e.target.blur()} />
               </div>
               {inputs.monthlyIncome && <div className="input-words-hint">{numberToIndianWords(inputs.monthlyIncome)}</div>}
               {errors.monthlyIncome && <span className="form-error">{errors.monthlyIncome}</span>}

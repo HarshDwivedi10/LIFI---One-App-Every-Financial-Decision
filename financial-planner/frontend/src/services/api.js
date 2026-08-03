@@ -19,11 +19,13 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    if (error.response && error.response.status === 401) {
+      // Only clear session on 401 (unauthorized / expired token)
       localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      localStorage.removeItem('finance_user');
       window.location.href = '/login';
     }
+    // 403 = forbidden (wrong role) — don't wipe session, just reject
     return Promise.reject(error);
   }
 );
@@ -86,6 +88,20 @@ export const goalApi = {
   update: (id, data) => api.put(`/goals/${id}`, data),
   delete: (id) => api.delete(`/goals/${id}`),
   acknowledge: (id) => api.put(`/goals/${id}/acknowledge`),
+};
+
+// ─── Coach Specific ───────────────────────────────────────
+export const coachApi = {
+  getAssignedUsers: () => api.get('/coach/users'),
+};
+
+// ─── Chat ──────────────────────────────────────────────────
+export const chatApi = {
+  getHistory: (partnerId) => api.get('/chat/history', { params: { partnerId } }),
+  getMyCoach: () => api.get('/chat/my-coach'),
+  sendMessage: (data) => api.post('/chat/send', data),
+  getUnreadCount: () => api.get('/chat/unread-count'),
+  markAsRead: (partnerId) => api.put('/chat/mark-read', null, { params: { partnerId } })
 };
 
 export default api;

@@ -39,8 +39,22 @@ public class User implements UserDetails {
 
     private String name;
 
+    @Column(name = "phone_number")
+    private String phone;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_coach_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User assignedCoach;
+
     @Column(updatable = false)
     private LocalDateTime createdAt;
+
+    @Enumerated(EnumType.STRING)
+    private Role role;
+
+    @Enumerated(EnumType.STRING)
+    private AccountStatus status;
 
     @PrePersist
     public void prePersist() {
@@ -51,7 +65,7 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_USER"));
+        return List.of(new SimpleGrantedAuthority(role != null ? role.name() : Role.ROLE_USER.name()));
     }
 
     @Override
@@ -81,6 +95,16 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return status == null || status == AccountStatus.ACTIVE;
+    }
+
+    /**
+     * Returns true if the account is in a non-loginable state
+     * (PENDING, SUSPENDED, or REJECTED).
+     */
+    public boolean isBlocked() {
+        return status == AccountStatus.PENDING
+                || status == AccountStatus.SUSPENDED
+                || status == AccountStatus.REJECTED;
     }
 }
