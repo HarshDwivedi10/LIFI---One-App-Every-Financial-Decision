@@ -59,7 +59,7 @@ public class AutomatedSavingsScheduler {
                             t.setUser(user);
                             t.setType(Transaction.TransactionType.INCOME);
                             t.setCategory("Income");
-                            t.setDescription(src.getDescription() != null ? src.getDescription() : src.getType());
+                            t.setDescription(src.getDescription() != null ? src.getDescription() : src.getType().name());
                             t.setAmount(src.getAmount());
                             t.setDate(today);
                             t.setIncomeSourceId(src.getId());

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import './FundManagementPage.css';
 import toast from 'react-hot-toast';
@@ -21,6 +21,8 @@ const FUNDS = [
 
 export default function FundManagementPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
   
   const [loading, setLoading] = useState(true);
   const [monthlyIncome, setMonthlyIncome] = useState(0);
@@ -48,6 +50,7 @@ export default function FundManagementPage() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showPreExistingModal, setShowPreExistingModal] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -119,6 +122,11 @@ export default function FundManagementPage() {
       } else {
         setAllocations(PROFILES.find(p => p.id === 'AGGRESSIVE').allocations);
         setRetirementPercent(6);
+      }
+
+      const isFirstTimeUrl = new URLSearchParams(location.search).get('firstTime') === 'true';
+      if (isFirstTimeUrl || !settings.fundAllocationsJson) {
+        setShowFirstTimeModal(true);
       }
 
     } catch (err) {
@@ -291,22 +299,20 @@ export default function FundManagementPage() {
              <div style={{ marginBottom: '24px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                  <div style={{ fontSize: '12px', color: '#8B8C9A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pre-Existing Savings</div>
-                 {preExistingSavingsDate && !isEditing && (
-                   <div style={{ fontSize: '10px', color: '#818CF8' }}>Since {preExistingSavingsDate}</div>
-                 )}
+                 <button 
+                   onClick={() => setShowPreExistingModal(true)}
+                   style={{ background: 'transparent', border: '1px solid rgba(129, 140, 248, 0.3)', color: '#818CF8', padding: '4px 10px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
+                 >
+                   Edit
+                 </button>
                </div>
                
-               {isEditing ? (
-                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                   <div style={{ display: 'flex', gap: '8px' }}>
-                     <span style={{ color: '#8B8C9A', alignSelf: 'center' }}>₹</span>
-                     <input type="number" value={preExistingSavings} onChange={e => setPreExistingSavings(parseFloat(e.target.value)||0)} style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '18px', fontWeight: 600, outline: 'none', borderBottom: '1px solid #818CF8' }} />
-                   </div>
-                   <input type="date" value={preExistingSavingsDate} onChange={e => setPreExistingSavingsDate(e.target.value)} style={{ background: 'transparent', border: '1px solid #232533', color: '#8B8C9A', fontSize: '12px', padding: '4px', borderRadius: '4px' }} />
-                 </div>
-               ) : (
-                 <div style={{ fontSize: '20px', fontWeight: 600, color: '#EAB308' }}>₹{new Intl.NumberFormat('en-IN').format(preExistingSavings)}</div>
-               )}
+               <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                 <div style={{ fontSize: '24px', fontWeight: 700, color: '#EAB308' }}>₹{new Intl.NumberFormat('en-IN').format(preExistingSavings)}</div>
+                 {preExistingSavingsDate && (
+                   <div style={{ fontSize: '11px', color: '#8B8C9A' }}>(Since {preExistingSavingsDate})</div>
+                 )}
+               </div>
              </div>
 
              <div className="fm-total-savings" style={{ marginBottom: '8px' }}>Total Savings</div>
@@ -602,6 +608,204 @@ export default function FundManagementPage() {
           </div>
         </div>
       )}
+
+      {showFirstTimeModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div className="fm-card animate-scale-in" style={{ width: '90%', maxWidth: '1000px', maxHeight: '90vh', overflowY: 'auto', margin: 0, padding: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ padding: '32px 32px 0 32px', flexShrink: 0 }}>
+              <div className="fm-profile-header">
+                 <div>
+                   <h2 className="fm-title" style={{fontSize:'24px', color: '#10B981'}}>Welcome to Fund Management</h2>
+                 <div className="fm-subtitle" style={{fontSize: '15px'}}>As a first-time user, please select an investment profile to allocate your pre-existing savings.</div>
+                 </div>
+              </div>
+              
+              <div className="fm-profile-grid" style={{ marginTop: '24px' }}>
+                {PROFILES.map(p => (
+                  <div 
+                    key={p.id}
+                    onClick={() => {
+                       handleProfileChange(p.id);
+                       setIsEditing(true);
+                    }}
+                    className={`fm-profile-card ${selectedProfile === p.id ? 'active' : ''}`}
+                  >
+                    {p.id === 'MODERATE' && <div className="fm-rec-badge">Recommended</div>}
+                    {selectedProfile === p.id && (
+                      <div className="fm-check-badge">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                      </div>
+                    )}
+                    <div className="fm-profile-icon">{renderIcon(p.icon)}</div>
+                    <div className="fm-profile-title">{p.label}</div>
+                    <div className="fm-profile-desc">
+                      {p.description.split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: '32px', padding: '0 32px', flexShrink: 0 }}>
+              <h4 style={{ color: '#fff', marginBottom: '16px', fontSize: '16px' }}>Allocation Preview</h4>
+              
+              <div className="fm-fund-row" style={{ alignItems: 'flex-end', borderBottom: '1px solid #232533', paddingBottom: '12px', paddingTop: 0 }}>
+                 <div style={{ width: '48px', paddingRight: '16px' }}></div>
+                 <div style={{ flex: '0 0 220px', paddingRight: '16px' }}>
+                   <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600 }}>Fund Details</div>
+                 </div>
+                 <div style={{ flex: 1, display: 'flex', justifyContent: 'center', margin: '0 16px' }}>
+                   <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3 }}>% of<br/>Income</div>
+                 </div>
+                 <div style={{ flex: '0 0 120px', display: 'flex', justifyContent: 'center', margin: '0 16px' }}>
+                   <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3 }}>Per Month Allocation<br/>(From Income)</div>
+                 </div>
+                 <div style={{ minWidth: '120px', display: 'flex', justifyContent: 'flex-end' }}>
+                   <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'right', lineHeight: 1.3 }}>Pre-Existing Savings<br/>Distribution</div>
+                 </div>
+              </div>
+
+              {FUNDS.map(fund => {
+                const val = fund.id === 'RETIREMENT' ? retirementPercent : (allocations[fund.id] || 0);
+                const rawProfile = PROFILES.find(p => p.id === selectedProfile);
+                let rawVal = 0;
+                if (selectedProfile === 'CUSTOM') {
+                   const totalAllocLocal = Object.values(allocations).reduce((sum, v) => sum + v, 0) + retirementPercent;
+                   rawVal = totalAllocLocal > 0 ? (val / totalAllocLocal) * 100 : 0;
+                } else {
+                   rawVal = rawProfile && rawProfile.allocations[fund.id] !== undefined ? rawProfile.allocations[fund.id] : 0;
+                }
+
+                return (
+                   <div key={fund.id} className="fm-fund-row" style={{ alignItems: 'center', padding: '16px 0' }}>
+                     <div className="fm-fund-icon-box" style={{ background: `rgba(${parseInt(fund.color.slice(1,3),16)}, ${parseInt(fund.color.slice(3,5),16)}, ${parseInt(fund.color.slice(5,7),16)}, 0.15)`, color: fund.color }}>
+                       {renderIcon(fund.icon)}
+                     </div>
+                     <div style={{ flex: '0 0 220px', paddingRight: '16px' }}>
+                       <div className="fm-fund-name" style={{ fontSize: '14px' }}>{fund.name.substring(3)}</div>
+                       <div style={{ fontSize: '11px', color: '#8B8C9A', marginTop: '4px', lineHeight: 1.4, fontStyle: 'italic' }}>{fund.description}</div>
+                     </div>
+                     
+                     <div className="fm-slider-container" style={{ flex: 1, margin: '0 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                         <input 
+                           type="number"
+                           value={val}
+                           step="0.1"
+                           onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
+                           style={{
+                             background: 'transparent',
+                             border: 'none',
+                             borderBottom: `2px solid ${fund.color}`,
+                             color: '#fff',
+                             fontSize: '14px',
+                             fontWeight: 700,
+                             width: '48px',
+                             textAlign: 'center',
+                             outline: 'none',
+                             padding: '2px 0'
+                           }}
+                         />
+                         <span style={{ color: '#8B8C9A', fontSize: '12px', marginLeft: '4px' }}>%</span>
+                       </div>
+                       <input 
+                         type="range" 
+                         min="0" max="100" step="0.1" 
+                         value={val}
+                         onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
+                         style={{ 
+                           width: '100%',
+                           background: `linear-gradient(to right, ${fund.color} ${val}%, #232533 ${val}%)`,
+                           '--thumb-color': fund.color,
+                           opacity: 1,
+                           cursor: 'pointer'
+                         }}
+                       />
+                     </div>
+                   
+                     <div style={{ flex: '0 0 120px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
+                       <div style={{ display: 'flex', alignItems: 'center' }}>
+                         <span style={{ color: '#8B8C9A', fontSize: '13px', marginRight: '4px' }}>₹</span>
+                         <span style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>
+                           {new Intl.NumberFormat('en-IN').format(Math.round(calculateRupees(val)))}
+                         </span>
+                         <span style={{ color: '#8B8C9A', fontSize: '11px', marginLeft: '6px' }}>/ mo</span>
+                       </div>
+                     </div>
+                     
+                     <div className="fm-fund-amount" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '120px' }}>
+                       <span style={{ color: fund.color, fontWeight: 700, fontSize: '15px' }}>
+                         ₹{new Intl.NumberFormat('en-IN').format(Math.round(preExistingSavings * (rawVal / 100)))}
+                       </span>
+                       <span style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{Number(rawVal).toFixed(1)}% of Lump Sum</span>
+                     </div>
+                   </div>
+                );
+              })}
+            </div>
+            
+            <div style={{ marginTop: '32px', display: 'flex', justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'rgba(18, 20, 29, 0.95)', padding: '24px 32px', borderTop: '1px solid #232533', zIndex: 10, backdropFilter: 'blur(8px)' }}>
+              <button className="fm-btn-primary" style={{ padding: '14px 32px', fontSize: '16px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }} onClick={async () => {
+                await handleSaveChanges();
+                setShowFirstTimeModal(false);
+                navigate('/fund-management', { replace: true });
+              }}>
+                Save & Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-Existing Savings Modal */}
+      {showPreExistingModal && (
+        <div className="fm-modal-overlay" onClick={() => setShowPreExistingModal(false)} style={{ zIndex: 9999 }}>
+          <div className="fm-modal" onClick={e => e.stopPropagation()}>
+            <div className="fm-modal-header">
+              <h3>Update Pre-Existing Savings</h3>
+              <button className="fm-modal-close" onClick={() => setShowPreExistingModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="fm-modal-body">
+              <p style={{ color: '#8B8C9A', fontSize: '13px', marginBottom: '16px' }}>Enter your total pre-existing lump sum savings.</p>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                <span style={{ color: '#8B8C9A', alignSelf: 'center', fontSize: '18px' }}>₹</span>
+                <input 
+                  type="number" 
+                  value={preExistingSavings} 
+                  onChange={e => setPreExistingSavings(parseFloat(e.target.value)||0)} 
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '18px', padding: '10px', borderRadius: '6px' }} 
+                  placeholder="e.g. 500000"
+                />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px' }}>Date Evaluated</label>
+                <input 
+                  type="date" 
+                  value={preExistingSavingsDate} 
+                  onChange={e => setPreExistingSavingsDate(e.target.value)} 
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '14px', padding: '10px', borderRadius: '6px' }} 
+                />
+              </div>
+            </div>
+            <div className="fm-modal-footer">
+              <button className="fm-btn-outline" onClick={() => setShowPreExistingModal(false)}>Cancel</button>
+              <button className="fm-btn-primary" style={{ background: '#EAB308', color: '#000' }} onClick={async () => {
+                try {
+                  await toast.promise(api.put('/user/settings', {
+                    manualTotalSavings: preExistingSavings,
+                    preExistingSavingsDate: preExistingSavingsDate
+                  }), { loading: 'Saving...', success: 'Saved successfully!', error: 'Failed to save.' });
+                  setShowPreExistingModal(false);
+                } catch (err) {}
+              }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
