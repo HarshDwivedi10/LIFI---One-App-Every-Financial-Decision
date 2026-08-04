@@ -52,6 +52,17 @@ export default function FundManagementPage() {
   const [selectedReconcileFund, setSelectedReconcileFund] = useState('RETIREMENT');
   const [isReconciling, setIsReconciling] = useState(false);
 
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferFrom, setTransferFrom] = useState('');
+  const [transferTo, setTransferTo] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [showTransferSuccess, setShowTransferSuccess] = useState(false);
+
+  const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
+  const [transferHistory, setTransferHistory] = useState([]);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+
   const fetchSavingsBreakdown = async () => {
     try {
       const res = await api.get('/user/savings-breakdown');
@@ -220,7 +231,68 @@ export default function FundManagementPage() {
     }
   };
 
+  const handleTransfer = async () => {
+    if (!transferFrom || !transferTo || !transferAmount || parseFloat(transferAmount) <= 0) {
+      toast.error('Please fill all fields with valid amounts.');
+      return;
+    }
+    if (transferFrom === transferTo) {
+      toast.error('Source and destination must be different.');
+      return;
+    }
 
+    const currentUnallocatedPct = Math.max(0, 100 - (Object.values(allocations).reduce((sum, val) => sum + val, 0) + retirementPercent));
+    const availableBalance = preExistingAssets[transferFrom] || 0;
+    
+    if (parseFloat(transferAmount) > availableBalance) {
+      toast.error('Insufficient funds in the source account. You can only transfer accumulated stored savings.');
+      return;
+    }
+
+    try {
+      setIsTransferring(true);
+      await api.post('/assets/transfer', {
+        sourceFund: transferFrom,
+        destinationFund: transferTo,
+        amount: parseFloat(transferAmount)
+      });
+      
+      setShowTransferModal(false);
+      setTransferAmount('');
+      
+      // Trigger success animation overlay
+      setShowTransferSuccess(true);
+      setTimeout(() => {
+        setShowTransferSuccess(false);
+        fetchData();
+      }, 2500);
+
+    } catch (err) {
+      console.error('Transfer Error:', err.response);
+      let errorMsg = 'Failed to transfer funds.';
+      if (err.response?.data) {
+        if (typeof err.response.data === 'string') errorMsg = err.response.data;
+        else if (err.response.data.message) errorMsg = err.response.data.message;
+        else errorMsg = JSON.stringify(err.response.data);
+      }
+      toast.error(errorMsg);
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const handleViewTransferHistory = async () => {
+    setShowTransferHistoryModal(true);
+    setIsFetchingHistory(true);
+    try {
+      const res = await api.get('/assets/transfers');
+      setTransferHistory(res.data || []);
+    } catch (err) {
+      toast.error('Failed to load transfer history.');
+    } finally {
+      setIsFetchingHistory(false);
+    }
+  };
 
   const handleAllocationChange = (fundId, value) => {
     let newVal = parseFloat(value) || 0;
@@ -357,10 +429,10 @@ export default function FundManagementPage() {
   };
 
   return (
-    <div className="fund-management-container" style={{ display: 'flex', gap: '32px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div className="fund-management-container">
       
       {Math.abs(discrepancy) > 0 && !loading && (
-        <div style={{ width: '100%', background: 'rgba(249, 115, 22, 0.1)', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '12px', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ width: '100%', background: 'rgba(249, 115, 22, 0.1)', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '12px', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
              <span style={{ color: '#F97316', fontSize: '15px', fontWeight: 500 }}>
@@ -373,228 +445,183 @@ export default function FundManagementPage() {
         </div>
       )}
 
-      {/* LEFT COLUMN: Total Savings & Summary */}
-      <div style={{ flex: '1 1 300px', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-         <div className="fm-card" style={{ padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-           <div>
-             
-             <div style={{ marginBottom: '24px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                 <div style={{ fontSize: '12px', color: '#8B8C9A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pre-Existing Savings</div>
-                 <button 
-                   onClick={() => setShowPreExistingModal(true)}
-                   style={{ background: 'transparent', border: '1px solid rgba(129, 140, 248, 0.3)', color: '#818CF8', padding: '4px 10px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
-                 >
-                   Edit
-                 </button>
-               </div>
-               
-               <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                 <div style={{ fontSize: '24px', fontWeight: 700, color: '#EAB308' }}>₹{new Intl.NumberFormat('en-IN').format(preExistingSavings)}</div>
-                 {preExistingSavingsDate && (
-                   <div style={{ fontSize: '11px', color: '#8B8C9A' }}>(Since {preExistingSavingsDate})</div>
-                 )}
-               </div>
-             </div>
-
-              <div className="fm-total-savings" style={{ marginBottom: '8px' }}>Total Savings</div>
-              <div className="fm-savings-amount" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '36px' }}>₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(totalSavingsDisplay)}</span>
-                <span style={{ fontSize: '16px', color: '#8B8C9A', marginLeft: '8px', fontWeight: 500 }}>({formatNumberToWords(totalSavingsDisplay)})</span>
-              </div>
-            </div>
-           
-
-
-           <div style={{ background: totalAlloc === 100 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(234, 179, 8, 0.1)', borderRadius: '12px', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: totalAlloc === 100 ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(234, 179, 8, 0.3)' }}>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: totalAlloc === 100 ? '#10B981' : '#EAB308', fontSize: '14px', fontWeight: 600 }}>
-               {totalAlloc === 100 ? (
-                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-               ) : (
-                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-               )}
-               <span>Allocation Total: {totalAlloc.toFixed(1)}%</span>
-             </div>
-             <strong style={{ color: totalAlloc === 100 ? '#10B981' : '#EAB308', fontSize: '14px' }}>
-               {totalAlloc === 100 ? '100% Allocated' : `${unallocatedPct.toFixed(1)}% unallocated`}
-             </strong>
-           </div>
+      {/* TOP WIDGETS */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        
+        {/* Left: Allocation Total Widget */}
+        <div className="fm-card fm-card-purple" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
+          <div>
+            <div className="fm-compact-title" style={{ color: totalAlloc === 100 ? '#10B981' : '#F97316' }}>Allocation Total</div>
+            <div className="fm-compact-value" style={{ color: totalAlloc === 100 ? '#10B981' : '#F97316' }}>{totalAlloc.toFixed(1)}%</div>
+            <div style={{ fontSize: '11px', color: '#8B8C9A', marginTop: '4px' }}>{totalAlloc === 100 ? '100% Allocated' : `${unallocatedPct.toFixed(1)}% Unallocated`}</div>
+          </div>
         </div>
+
+        {/* Right: Total Savings Widget */}
+        <div className="fm-card fm-card-green" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
+          <div>
+            <div className="fm-compact-title">Total Savings</div>
+            <div className="fm-compact-value" style={{ color: '#34D399' }}>₹{new Intl.NumberFormat('en-IN').format(totalSavingsDisplay)}</div>
+          </div>
+          <button 
+             onClick={() => setShowPreExistingModal(true)}
+             style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
+           >
+             Edit Pre-Existing Balance
+           </button>
+        </div>
+
       </div>
 
-      {/* RIGHT COLUMN: Allocations */}
-      <div style={{ flex: '2 1 600px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-         <div className="fm-card" style={{ marginBottom: 0 }}>
-           <div className="fm-profile-header" style={{ alignItems: 'center' }}>
-              <div>
-                <h2 className="fm-title" style={{fontSize:'20px'}}>Manage Savings Allocation</h2>
-                <p className="fm-subtitle">Adjust how your savings are distributed across funds.</p>
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                 {!isEditing ? (
-                   <button className="fm-btn-primary" style={{ padding: '6px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '8px' }} onClick={() => setIsEditing(true)}>
-                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                     Edit Allocation
-                   </button>
-                 ) : (
-                   <button className="fm-btn-primary" onClick={handleSaveChanges} style={{ padding: '6px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', background: '#818CF8', borderRadius: '8px' }}>
-                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                     Save Allocation
-                   </button>
-                 )}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: '12px', color: totalAlloc === 100 ? '#10B981' : '#EAB308' }}>
-                    Allocation Total
-                  </span>
-                  <strong style={{ color: totalAlloc === 100 ? '#10B981' : '#EAB308', fontSize: '18px' }}>
-                    {totalAlloc.toFixed(1)}% / 100%
-                  </strong>
+      {/* MAIN TWO COLUMNS */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+        
+        {/* LEFT CARD - Monthly Allocation */}
+        <div className="fm-card fm-card-purple" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div className="fm-header-bar">
+             <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {renderIcon('calendar')}
                 </div>
-              </div>
-           </div>
-           
-           <div style={{ marginTop: '32px' }}>
-             <div className="fm-fund-row" style={{ alignItems: 'flex-end', borderBottom: '1px solid #232533', paddingBottom: '12px', paddingTop: 0 }}>
-                <div style={{ width: '48px', paddingRight: '16px' }}></div>
-                <div style={{ flex: '0 0 180px', paddingRight: '16px' }}>
-                  <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600 }}>Fund</div>
-                </div>
-                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', margin: '0 16px' }}>
-                  <div style={{ fontSize: '11px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3, fontWeight: 600 }}>% of Monthly Savings</div>
-                </div>
-                <div style={{ flex: '0 0 140px', display: 'flex', justifyContent: 'center', margin: '0 16px' }}>
-                  <div style={{ fontSize: '11px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3, fontWeight: 600 }}>Monthly Contribution</div>
-                </div>
-                <div style={{ minWidth: '110px', display: 'flex', justifyContent: 'flex-end' }}>
-                  <div style={{ fontSize: '11px', color: '#8B8C9A', textAlign: 'right', lineHeight: 1.3, fontWeight: 600 }}>Total Amount in Fund</div>
+                <div>
+                   <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 4px 0' }}>Monthly Allocation</h2>
+                   <div style={{ fontSize: '13px', color: '#8B8C9A' }}>Current month's savings distribution</div>
                 </div>
              </div>
-
-              {FUNDS.map(fund => {
-                const val = fund.id === 'RETIREMENT' ? retirementPercent : fund.id === 'UNALLOCATED' ? unallocatedPct : (allocations[fund.id] || 0);
-                const monthlyContribution = calculateRupees(val);
-                const totalFundBalance = getFundTotalBalance(fund.id, val);
-                const hasPlannedRetirement = !!localStorage.getItem('retirement_sip_target');
-
-               return (
-                 <div key={fund.id} className="fm-fund-row" style={{ alignItems: 'center' }}>
-                   <div className="fm-fund-icon-box" style={{ background: `rgba(${parseInt(fund.color.slice(1,3),16)}, ${parseInt(fund.color.slice(3,5),16)}, ${parseInt(fund.color.slice(5,7),16)}, 0.15)`, color: fund.color }}>
-                     {renderIcon(fund.icon)}
-                   </div>
-                   <div style={{ flex: '0 0 180px', paddingRight: '16px' }}>
-                     <div className="fm-fund-name" style={{ fontSize: '14px' }}>{fund.name}</div>
-                     <div style={{ fontSize: '11px', color: '#8B8C9A', marginTop: '4px', lineHeight: 1.4 }}>{fund.description}</div>
-                   </div>
-                   
-                   {fund.id === 'RETIREMENT' && !hasPlannedRetirement ? (
-                     <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                       <button className="fm-btn-outline" onClick={() => navigate('/retirement-planner')} style={{ padding: '8px 24px', borderColor: '#818CF8', color: '#818CF8' }}>
-                         Plan Retirement First
-                       </button>
-                     </div>
-                   ) : (
-                     <>
-                        <div className="fm-slider-container" style={{ flex: 1, margin: '0 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                           {fund.id === 'UNALLOCATED' ? (
-                             <div style={{ color: '#9CA3AF', fontSize: '16px', fontWeight: 700 }}>{val.toFixed(1)}%</div>
-                           ) : isEditing ? (
-                             <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                               <input 
-                                 type="number"
-                                 value={val}
-                                 step="0.1"
-                                 onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
-                                 style={{
-                                   background: 'transparent',
-                                   border: 'none',
-                                   borderBottom: `2px solid ${fund.color}`,
-                                   color: '#fff',
-                                   fontSize: '16px',
-                                   fontWeight: 700,
-                                   width: '56px',
-                                   textAlign: 'center',
-                                   outline: 'none',
-                                   padding: '2px 0'
-                                 }}
-                               />
-                               <span style={{ color: '#8B8C9A', fontSize: '14px', marginLeft: '4px' }}>%</span>
-                             </div>
-                           ) : (
-                             <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700, marginBottom: '8px' }}>{val.toFixed(1)}%</div>
-                           )}
-                           
-                           {fund.id !== 'UNALLOCATED' && (
-                           <input 
-                             type="range" 
-                             min="0" max="100" step="0.1" 
-                             value={val}
-                             onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
-                             disabled={!isEditing}
-                             style={{ 
-                               width: '100%',
-                               background: `linear-gradient(to right, ${fund.color} ${val}%, #232533 ${val}%)`,
-                               '--thumb-color': fund.color,
-                               opacity: isEditing ? 1 : 0.6,
-                               cursor: isEditing ? 'pointer' : 'not-allowed'
-                             }}
-                           />
-                           )}
-                         </div>
-                       
-                       <div style={{ flex: '0 0 140px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
-                         <div style={{ display: 'flex', alignItems: 'center' }}>
-                           <span style={{ color: '#8B8C9A', fontSize: '14px', marginRight: '4px' }}>₹</span>
-                           <span style={{ color: '#fff', fontSize: '15px', fontWeight: 600 }}>
-                             {new Intl.NumberFormat('en-IN').format(Math.round(monthlyContribution))}
-                           </span>
-                           <span style={{ color: '#8B8C9A', fontSize: '12px', marginLeft: '6px' }}>/ mo</span>
-                         </div>
-                       </div>
-                       
-                       <div className="fm-fund-amount" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '110px' }}>
-                         <span style={{ color: fund.color, fontWeight: 700, fontSize: '15px' }}>
-                           ₹{new Intl.NumberFormat('en-IN').format(Math.round(totalFundBalance))}
-                         </span>
-                         <span style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fund Balance</span>
-                       </div>
-                     </>
-                   )}
-                 </div>
-               );
-             })}
-
-              {/* Total Row */}
-              <div className="fm-fund-row" style={{ alignItems: 'center', borderTop: '2px solid #232533', marginTop: '16px', paddingTop: '16px' }}>
-                <div style={{ flex: '0 0 48px', paddingRight: '16px' }}></div>
-                <div style={{ flex: '0 0 180px', paddingRight: '16px' }}>
-                  <div className="fm-fund-name" style={{ fontSize: '16px', color: '#fff', fontWeight: 700 }}>Total</div>
-                </div>
-                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
-                  <div style={{ color: totalAlloc === 100 ? '#10B981' : '#EAB308', fontSize: '16px', fontWeight: 700 }}>
-                    {totalAlloc.toFixed(1)}%
-                  </div>
-                </div>
-                <div style={{ flex: '0 0 140px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span style={{ color: '#8B8C9A', fontSize: '14px', marginRight: '4px' }}>₹</span>
-                    <span style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>
-                      {new Intl.NumberFormat('en-IN').format(Math.round(calculateRupees(totalAlloc)))}
-                    </span>
-                    <span style={{ color: '#8B8C9A', fontSize: '12px', marginLeft: '6px' }}>/ mo</span>
-                  </div>
-                </div>
-                <div className="fm-fund-amount" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '110px' }}>
-                  <span style={{ color: '#10B981', fontWeight: 700, fontSize: '16px' }}>
-                    ₹{new Intl.NumberFormat('en-IN').format(Math.round(totalSavingsDisplay))}
-                  </span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Savings</span>
-                </div>
-              </div>
-
-            </div>
+             <button onClick={() => isEditing ? handleSaveChanges() : setIsEditing(true)} style={{ background: isEditing ? '#4F46E5' : '#818CF8', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', display: 'flex', gap: '6px', alignItems: 'center', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}>
+                {isEditing ? 'Save' : (
+                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                     Edit Allocation
+                   </span>
+                )}
+             </button>
+          </div>
+          
+          <div className="fm-table-row fm-table-header">
+             <div style={{ flex: '2' }}>Fund</div>
+             <div style={{ flex: '1', textAlign: 'center' }}>% of Monthly Savings</div>
+             <div style={{ flex: '1.2', textAlign: 'right' }}>Monthly Contribution</div>
           </div>
 
+          <div style={{ flex: 1 }}>
+            {FUNDS.map(fund => {
+                const val = fund.id === 'RETIREMENT' ? retirementPercent : fund.id === 'UNALLOCATED' ? unallocatedPct : (allocations[fund.id] || 0);
+                const hasPlannedRetirement = !!localStorage.getItem('retirement_sip_target');
+                
+                return (
+                   <div className="fm-table-row" key={fund.id}>
+                      <div style={{ flex: '2', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: `rgba(${parseInt(fund.color.slice(1,3),16)}, ${parseInt(fund.color.slice(3,5),16)}, ${parseInt(fund.color.slice(5,7),16)}, 0.15)`, color: fund.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {renderIcon(fund.icon)}
+                         </div>
+                         <div style={{ fontSize: '14px', fontWeight: 500 }}>{fund.name}</div>
+                      </div>
+                      
+                      <div style={{ flex: '1', textAlign: 'center' }}>
+                         {fund.id === 'RETIREMENT' && !hasPlannedRetirement ? (
+                            <span style={{ fontSize: '13px', color: '#8B8C9A' }}>Unplanned</span>
+                         ) : fund.id === 'UNALLOCATED' ? (
+                            <span style={{ fontSize: '15px', fontWeight: 600 }}>{val.toFixed(1)}%</span>
+                         ) : isEditing ? (
+                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '0 8px' }}>
+                               <input 
+                                 type="range" 
+                                 min="0" max="100" step="0.1" 
+                                 value={val}
+                                 onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
+                                 style={{ 
+                                   width: '100%',
+                                   background: `linear-gradient(to right, ${fund.color} ${val}%, #232533 ${val}%)`,
+                                   '--thumb-color': fund.color,
+                                   cursor: 'pointer'
+                                 }}
+                               />
+                               <span style={{ fontSize: '12px', marginTop: '6px', color: '#A5B4FC', fontWeight: 600 }}>{val.toFixed(1)}%</span>
+                             </div>
+                         ) : (
+                             <span style={{ fontSize: '15px', fontWeight: 600 }}>{val.toFixed(1)}%</span>
+                         )}
+                      </div>
+                      
+                      <div style={{ flex: '1.2', textAlign: 'right', fontSize: '14px', fontWeight: 500 }}>
+                         ₹{new Intl.NumberFormat('en-IN').format(Math.round(calculateRupees(val)))} <span style={{ color: '#8B8C9A', fontSize: '12px' }}>/ mo</span>
+                      </div>
+                   </div>
+                );
+            })}
+          </div>
+          
+          <div className="fm-footer-purple">
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '15px', fontWeight: 600 }}>Monthly Savings</div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: '#A5B4FC', display: 'flex', alignItems: 'center' }}>
+                   <span style={{ fontSize: '18px', marginRight: '32px', color: totalAlloc === 100 ? '#10B981' : '#F97316' }}>{totalAlloc.toFixed(1)}%</span>
+                   ₹{new Intl.NumberFormat('en-IN').format(expectedMonthlySavings)} <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>/ mo</span>
+                </div>
+             </div>
+          </div>
+        </div>
+        
+        {/* RIGHT CARD - Fund Balances */}
+        <div className="fm-card fm-card-green" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div className="fm-header-bar">
+             <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                </div>
+                <div>
+                   <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 4px 0' }}>Fund Balances</h2>
+                   <div style={{ fontSize: '13px', color: '#8B8C9A' }}>Current accumulated balance in each fund</div>
+                </div>
+             </div>
+             <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={handleViewTransferHistory} style={{ background: 'transparent', color: '#8B8C9A', border: '1px solid #37394d', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                   History
+                </button>
+                <button onClick={() => { setTransferFrom('UNALLOCATED'); setTransferTo('RETIREMENT'); setShowTransferModal(true); }} style={{ background: 'transparent', color: '#F97316', border: '1px solid #F97316', padding: '8px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}>
+                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path></svg>
+                   Transfer
+                </button>
+             </div>
+          </div>
+          
+          <div className="fm-table-row fm-table-header">
+             <div style={{ flex: '1' }}>Fund</div>
+             <div style={{ flex: '1', textAlign: 'right' }}>Fund Balance</div>
+          </div>
+
+          <div style={{ flex: 1 }}>
+            {FUNDS.map(fund => {
+                const val = fund.id === 'RETIREMENT' ? retirementPercent : fund.id === 'UNALLOCATED' ? unallocatedPct : (allocations[fund.id] || 0);
+                const bal = getFundTotalBalance(fund.id, val);
+                return (
+                   <div className="fm-table-row" key={fund.id}>
+                      <div style={{ flex: '1', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: `rgba(${parseInt(fund.color.slice(1,3),16)}, ${parseInt(fund.color.slice(3,5),16)}, ${parseInt(fund.color.slice(5,7),16)}, 0.15)`, color: fund.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {renderIcon(fund.icon)}
+                         </div>
+                         <div style={{ fontSize: '14px', fontWeight: 500 }}>{fund.name}</div>
+                      </div>
+                      
+                      <div style={{ flex: '1', textAlign: 'right', fontSize: '15px', fontWeight: 600, color: '#34D399' }}>
+                         ₹{new Intl.NumberFormat('en-IN').format(Math.round(bal))}
+                      </div>
+                   </div>
+                );
+            })}
+          </div>
+          
+          <div className="fm-footer-green">
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '15px', fontWeight: 600 }}>Total Savings</div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: '#34D399' }}>
+                   ₹{new Intl.NumberFormat('en-IN').format(totalSavingsDisplay)}
+                </div>
+             </div>
+          </div>
+        </div>
+        
       </div>
 
       {/* Pre-Existing Savings Modal */}
@@ -747,7 +774,7 @@ export default function FundManagementPage() {
 
       {/* Discrepancy Reconciliation Modal */}
       {showReconcileModal && (
-        <div className="fm-modal-overlay" onClick={() => setShowReconcileModal(false)} style={{ zIndex: 9999 }}>
+        <div className="fm-modal-overlay" onClick={() => setShowReconcileModal(false)} style={{ zIndex: 999 }}>
           <div className="fm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="fm-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -790,6 +817,153 @@ export default function FundManagementPage() {
                 {isReconciling ? 'Applying...' : `Apply ₹${new Intl.NumberFormat('en-IN').format(Math.abs(reconcileAmount))} ${reconcileAmount > 0 ? 'Increase' : 'Decrease'}`}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Funds Modal */}
+      {showTransferModal && (
+        <div className="fm-modal-overlay" onClick={() => setShowTransferModal(false)} style={{ zIndex: 999 }}>
+          <div className="fm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <div className="fm-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '20px' }}>💸</span>
+                <h3>Transfer Funds</h3>
+              </div>
+              <button className="fm-modal-close" onClick={() => setShowTransferModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            <div className="fm-modal-body" style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>From Fund</label>
+                <select 
+                  value={transferFrom} 
+                  onChange={(e) => setTransferFrom(e.target.value)}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '15px', padding: '12px', borderRadius: '6px', outline: 'none' }}
+                >
+                  <option value="" disabled style={{ background: '#1A1C23', color: '#8B8C9A' }}>Select Source Fund</option>
+                  {FUNDS.map(f => (
+                    <option key={f.id} value={f.id} style={{ background: '#1A1C23', color: '#fff' }}>{f.name.replace(/^\d+\.\s*/, '')} (Avail: ₹{new Intl.NumberFormat('en-IN').format(preExistingAssets[f.id] || 0)})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#232533', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818CF8' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>To Fund</label>
+                <select 
+                  value={transferTo} 
+                  onChange={(e) => setTransferTo(e.target.value)}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '15px', padding: '12px', borderRadius: '6px', outline: 'none' }}
+                >
+                  <option value="" disabled style={{ background: '#1A1C23', color: '#8B8C9A' }}>Select Destination Fund</option>
+                  {FUNDS.map(f => (
+                    <option key={f.id} value={f.id} disabled={f.id === transferFrom} style={{ background: '#1A1C23', color: '#fff' }}>{f.name.replace(/^\d+\.\s*/, '')}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Transfer Amount</label>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '20px', color: '#8B8C9A' }}>₹</span>
+                  <input 
+                    type="number" 
+                    value={transferAmount} 
+                    onChange={e => setTransferAmount(e.target.value)} 
+                    style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '18px', padding: '12px', borderRadius: '6px' }} 
+                    placeholder="Enter amount"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="fm-modal-footer">
+              <button className="fm-btn-outline" onClick={() => setShowTransferModal(false)} disabled={isTransferring}>Cancel</button>
+              <button className="fm-btn-primary" style={{ background: '#10B981' }} onClick={handleTransfer} disabled={isTransferring || !transferFrom || !transferTo || !transferAmount}>
+                {isTransferring ? 'Transferring...' : 'Complete Transfer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer History Modal */}
+      {showTransferHistoryModal && (
+        <div className="fm-modal-overlay" onClick={() => setShowTransferHistoryModal(false)} style={{ zIndex: 999 }}>
+          <div className="fm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="fm-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '20px' }}>📜</span>
+                <h3>Transfer History</h3>
+              </div>
+              <button className="fm-modal-close" onClick={() => setShowTransferHistoryModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            <div className="fm-modal-body" style={{ padding: '0', maxHeight: '400px', overflowY: 'auto' }}>
+              {isFetchingHistory ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#8B8C9A' }}>Loading history...</div>
+              ) : transferHistory.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#8B8C9A' }}>No transfers found.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                  <thead style={{ background: '#232533', position: 'sticky', top: 0 }}>
+                    <tr>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', color: '#8B8C9A', fontWeight: 600 }}>Date</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', color: '#8B8C9A', fontWeight: 600 }}>Route</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', color: '#8B8C9A', fontWeight: 600 }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transferHistory.map((t, idx) => {
+                      const src = FUNDS.find(f => f.id === t.sourceFund)?.name.replace(/^\d+\.\s*/, '') || t.sourceFund;
+                      const dst = FUNDS.find(f => f.id === t.destinationFund)?.name.replace(/^\d+\.\s*/, '') || t.destinationFund;
+                      const dateObj = new Date(t.date);
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td style={{ padding: '12px 16px', color: '#fff' }}>
+                            {dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            <div style={{ fontSize: '11px', color: '#8B8C9A' }}>{dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute:'2-digit' })}</div>
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ color: '#EF4444', fontWeight: 500 }}>{src}</span>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B8C9A" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                              <span style={{ color: '#10B981', fontWeight: 500 }}>{dst}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', color: '#F97316', fontWeight: 600 }}>
+                            ₹{new Intl.NumberFormat('en-IN').format(t.amount)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Animation Overlay */}
+      {showTransferSuccess && (
+        <div className="fm-success-overlay">
+          <div className="fm-success-card">
+             <div className="fm-success-icon-wrap">
+               <svg className="fm-success-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+             </div>
+             <h2 style={{ color: '#fff', fontSize: '24px', margin: '16px 0 8px 0' }}>Transfer Complete!</h2>
+             <p style={{ color: '#8B8C9A', margin: 0 }}>Your funds have been securely moved.</p>
           </div>
         </div>
       )}

@@ -59,6 +59,8 @@ export const assetApi = {
   create: (data) => api.post('/assets', data),
   update: (id, data) => api.put(`/assets/${id}`, data),
   delete: (id) => api.delete(`/assets/${id}`),
+  transfer: (data) => api.post('/assets/transfer', data),
+  getTransfers: () => api.get('/assets/transfers'),
 };
 
 // ─── Liabilities ────────────────────────────────────────
