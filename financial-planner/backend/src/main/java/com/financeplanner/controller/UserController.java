@@ -3,6 +3,7 @@ package com.financeplanner.controller;
 import com.financeplanner.entity.User;
 import com.financeplanner.repository.UserRepository;
 import com.financeplanner.service.SavingsCalculationService;
+import com.financeplanner.service.FixedExpenseAdjustmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,6 +18,7 @@ public class UserController {
 
     private final UserRepository userRepository;
     private final SavingsCalculationService savingsCalculationService;
+    private final FixedExpenseAdjustmentService fixedExpenseAdjustmentService;
 
     @GetMapping("/settings")
     public ResponseEntity<Map<String, Object>> getSettings(@AuthenticationPrincipal User user) {
@@ -38,8 +40,14 @@ public class UserController {
         User dbUser = userRepository.findById(user.getId()).orElse(null);
         if (dbUser == null) return ResponseEntity.notFound().build();
         
+        boolean salaryDayChanged = false;
+        
         if (payload.containsKey("salaryDay")) {
-            dbUser.setSalaryDay(Integer.parseInt(payload.get("salaryDay").toString()));
+            int newDay = Integer.parseInt(payload.get("salaryDay").toString());
+            if (dbUser.getSalaryDay() == null || dbUser.getSalaryDay() != newDay) {
+                dbUser.setSalaryDay(newDay);
+                salaryDayChanged = true;
+            }
         }
         if (payload.containsKey("salaryTime")) {
             dbUser.setSalaryTime(payload.get("salaryTime").toString());
@@ -55,6 +63,11 @@ public class UserController {
         }
         
         userRepository.save(dbUser);
+        
+        if (salaryDayChanged) {
+            fixedExpenseAdjustmentService.adjustFixedExpensesForDateChange(dbUser, dbUser.getSalaryDay());
+        }
+
         Map<String, Object> response = new java.util.HashMap<>();
         response.put("message", "Settings updated successfully");
         response.put("salaryDay", dbUser.getSalaryDay() != null ? dbUser.getSalaryDay() : 1);

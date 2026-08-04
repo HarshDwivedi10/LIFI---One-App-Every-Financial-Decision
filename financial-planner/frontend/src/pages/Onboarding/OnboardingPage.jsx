@@ -5,7 +5,7 @@ import StepImport from './steps/StepImport';
 import StepIncome from './steps/StepIncome';
 import StepSavings from './steps/StepSavings';
 import StepAssets from './steps/StepAssets';
-import FinancialSummary from './FinancialSummary';
+
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -26,33 +26,81 @@ const STEPS = [
       </svg>
     ),
   },
-  { id: 4, label: 'Assets', icon: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-  ), description: 'What you own' },
+    { id: 4, label: 'Pre-existing savings', icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+    ), description: 'Already existing savings' },
 ];
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [animDir, setAnimDir] = useState('right');
-  const [showSummary, setShowSummary] = useState(false);
+
 
   // Shared state across steps
-  const [incomeData, setIncomeData] = useState({
-    monthlySalary: '',
-    otherSources: [],
-  });
+  const [incomeData, setIncomeData] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [assets, setAssets] = useState([]);
   const [manualTotalSavings, setManualTotalSavings] = useState('');
+  const [salaryDay, setSalaryDay] = useState(1);
 
-  const goNext = () => {
+  const goNext = async () => {
     if (currentStep < STEPS.length) {
       setAnimDir('right');
       setCurrentStep((s) => s + 1);
     } else {
+      const savePromise = async () => {
+        // Save User Settings
+        let settingsPayload = { salaryDay, salaryTime: "00:00" };
+        if (manualTotalSavings) {
+          settingsPayload.manualTotalSavings = parseFloat(manualTotalSavings) || 0;
+        }
+        await api.put('/user/settings', settingsPayload);
+
+        // Save Income Sources
+        for (const source of incomeData) {
+          if (source.amount) {
+            await api.post('/income', { 
+              type: source.type, 
+              amount: parseFloat(source.amount), 
+              description: source.description, 
+              dayOfMonth: parseInt(source.dayOfMonth) || 1 
+            });
+          }
+        }
+
+        // Save Fixed Expenses (from Step 3)
+        for (const expense of transactions) {
+          if (expense.amount) {
+            await api.post('/fixed-expenses', {
+              category: expense.category || 'Other',
+              description: expense.description || '',
+              amount: parseFloat(expense.amount)
+            });
+          }
+        }
+
+        // Save Assets
+        for (const asset of assets) {
+          if (asset.name && asset.value) {
+            await api.post('/assets', {
+              assetType: 'OTHER',
+              name: asset.name,
+              currentValue: parseFloat(asset.value),
+              assignedCorpus: asset.assignedCorpus
+            });
+          }
+        }
+      };
+
+      await toast.promise(savePromise(), {
+        loading: 'Creating your financial profile...',
+        success: 'Profile created successfully!',
+        error: 'Failed to create profile.'
+      });
+
       localStorage.setItem('hasCompletedOnboarding', 'true');
-      setShowSummary(true);
+      navigate('/fund-management?firstTime=true');
     }
   };
 
@@ -63,21 +111,26 @@ export default function OnboardingPage() {
     }
   };
 
-  const handleImport = (importedIncome, importedExpense) => {
-    // Automatically convert imported income transactions to otherSources
-    const otherSources = importedIncome.map(inc => ({
-      id: inc.id,
-      type: 'OTHER',
-      amount: inc.amount.toString(),
-      description: inc.description || inc.category
-    }));
+  const handleImport = (avgIncome, avgExpense) => {
+    if (avgIncome > 0) {
+      setIncomeData([{
+        id: Date.now(),
+        type: 'SALARY',
+        amount: avgIncome,
+        description: 'Bank Statement Average',
+        dayOfMonth: 1
+      }]);
+    }
 
-    setIncomeData(prev => ({
-      ...prev,
-      otherSources: [...prev.otherSources, ...otherSources]
-    }));
-    
-    setTransactions(importedExpense);
+    if (avgExpense > 0) {
+      setTransactions([{
+        id: Date.now(),
+        category: 'Other',
+        amount: avgExpense,
+        description: 'Bank Statement Average'
+      }]);
+    }
+
     goNext();
   };
 
@@ -87,70 +140,7 @@ export default function OnboardingPage() {
 
   const progress = ((currentStep - 1) / (STEPS.length - 1)) * 100;
 
-  if (showSummary) {
-    return (
-      <FinancialSummary
-        incomeData={incomeData}
-        transactions={transactions}
-        assets={assets}
-        manualTotalSavings={manualTotalSavings}
-        onBack={() => setShowSummary(false)}
-        onComplete={async () => {
-          const savePromise = async () => {
-            // Save User Settings
-            if (incomeData.salaryDay || manualTotalSavings) {
-              await api.put('/user/settings', {
-                salaryDay: incomeData.salaryDay || 1,
-                manualTotalSavings: parseFloat(manualTotalSavings) || 0
-              });
-            }
 
-            // Save Income Sources
-            if (incomeData.monthlySalary) {
-              await api.post('/income', { type: 'SALARY', amount: parseFloat(incomeData.monthlySalary) });
-            }
-            for (const source of incomeData.otherSources) {
-              if (source.amount) {
-                await api.post('/income', { type: source.type, amount: parseFloat(source.amount), description: source.description });
-              }
-            }
-
-            // Save Transactions
-            if (transactions.length > 0) {
-              await api.post('/transactions/bulk', transactions.map(t => ({
-                date: t.date || new Date().toISOString().split('T')[0],
-                type: t.type,
-                category: t.category || 'Other',
-                amount: parseFloat(t.amount),
-                description: t.description
-              })));
-            }
-
-            // Save Assets
-            for (const asset of assets) {
-              if (asset.name && asset.value) {
-                await api.post('/assets', {
-                  assetType: 'OTHER',
-                  name: asset.name,
-                  currentValue: parseFloat(asset.value),
-                  assignedCorpus: asset.assignedCorpus
-                });
-              }
-            }
-          };
-
-          await toast.promise(savePromise(), {
-            loading: 'Creating your financial profile...',
-            success: 'Profile created successfully!',
-            error: 'Failed to create profile.'
-          });
-
-          localStorage.setItem('hasCompletedOnboarding', 'true');
-          navigate('/goal-management');
-        }}
-      />
-    );
-  }
 
   return (
     <div className="onboarding-page">
@@ -251,7 +241,7 @@ export default function OnboardingPage() {
             <StepIncome data={incomeData} onChange={setIncomeData} />
           )}
           {currentStep === 3 && (
-            <StepSavings data={transactions} onChange={setTransactions} incomeData={incomeData} />
+            <StepSavings data={transactions} onChange={setTransactions} incomeData={incomeData} salaryDay={salaryDay} setSalaryDay={setSalaryDay} />
           )}
           {currentStep === 4 && (
             <StepAssets 
@@ -283,7 +273,7 @@ export default function OnboardingPage() {
 
             {currentStep === 4 ? (
               <button className="btn btn-primary" onClick={goNext}>
-                View Summary
+                Complete Setup
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>

@@ -71,10 +71,16 @@ function IncomeModal({ existing, onSave, onClose }) {
               <input type="number" placeholder="0.00" min="0" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
             </div>
             <div className="em-field-group">
-              <label>Day of Month It Arrives</label>
-              <input type="number" placeholder="e.g. 10" min="1" max="31" value={form.dayOfMonth} onChange={e => setForm({...form, dayOfMonth: parseInt(e.target.value)||1})} />
-              <span style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'4px' }}>Income arrives on this day every month</span>
-            </div>
+                <label>Day of Month It Arrives</label>
+                <input type="number" placeholder="e.g. 10" min="1" max="30" value={form.dayOfMonth} onChange={e => {
+                  let val = e.target.value;
+                  if (val === '') { setForm({...form, dayOfMonth: ''}); return; }
+                  let num = parseInt(val);
+                  if (num > 30) num = 30;
+                  setForm({...form, dayOfMonth: num});
+                }} />
+                <span style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'4px' }}>Income arrives on this day every month</span>
+              </div>
           </div>
         </div>
         <div className="em-modal-footer">
@@ -110,7 +116,7 @@ function FixedExpenseModal({ existing, onSave, onClose }) {
         </div>
         <div className="em-modal-body">
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
-            This expense will automatically be added to your actual expenses every month on your Cycle Start day.
+            This expense will automatically be added to your actual expenses every month on the fixed expense deduction date.
           </p>
           <div className="em-field-group">
             <label>Category</label>
@@ -284,7 +290,6 @@ export default function ExpenseManagementPage() {
   const [fixedExpenses, setFixedExpenses]   = useState([]);
   const [loading,       setLoading]         = useState(true);
   const [salaryDay,     setSalaryDay]       = useState(1);
-  const [salaryTime,    setSalaryTime]      = useState('09:00');
 
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
@@ -326,7 +331,6 @@ export default function ExpenseManagementPage() {
       setTransactions(txnRes.data   || []);
       setFixedExpenses(fixedRes.data || []);
       setSalaryDay(userRes.data.salaryDay  || 1);
-      setSalaryTime(userRes.data.salaryTime || '09:00');
     } catch { toast.error('Failed to load data.'); }
     finally  { setLoading(false); }
   };
@@ -478,7 +482,7 @@ export default function ExpenseManagementPage() {
   };
 
   const handleSaveSalarySettings = async () => {
-    await toast.promise(api.put('/user/settings', { salaryDay, salaryTime }), {
+    await toast.promise(api.put('/user/settings', { salaryDay, salaryTime: "00:00" }), {
       loading:'Saving...', success:'Salary settings saved!', error:'Failed.'
     });
   };
@@ -495,15 +499,6 @@ export default function ExpenseManagementPage() {
           <p>Monthly income and expense tracking with per-source day-of-credit control.</p>
         </div>
         <div className="em-header-actions">
-          <div className="em-salary-setting">
-            <span title="Fixed expenses will be automatically deducted on this day" style={{ cursor: 'help', borderBottom: '1px dotted #818cf8' }}>Cycle Start</span>
-            <select value={salaryDay} onChange={e => setSalaryDay(parseInt(e.target.value))}>
-              {[...Array(31)].map((_,i) => <option key={i+1} value={i+1}>{i+1}</option>)}
-            </select>
-            <span>at</span>
-            <input type="time" value={salaryTime} onChange={e => setSalaryTime(e.target.value)} />
-            <button className="em-btn em-btn-primary em-btn-sm" onClick={handleSaveSalarySettings}>Save</button>
-          </div>
           {verificationStatus?.isVerified ? (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <div style={{ color: 'var(--success-color)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600 }}>
@@ -564,7 +559,7 @@ export default function ExpenseManagementPage() {
         <div className={`em-summary-pill ${netSavings >= 0 ? 'em-pill-savings' : 'em-pill-deficit'}`}>
           <div className="em-pill-label">Net Savings</div>
           <div className="em-pill-value">{netSavings < 0 ? '-' : ''}{formatMoney(netSavings)}</div>
-          {isCurrent && <div className="em-pill-note">Auto-deposited to funds on cycle start</div>}
+          {isCurrent && <div className="em-pill-note">Auto-deposited to funds on fixed expense deduction date</div>}
         </div>
       </div>
 
@@ -597,49 +592,78 @@ export default function ExpenseManagementPage() {
               </div>
             ) : (
               <>
-                {/* Active/Arrived sources */}
-                {activeIncomeSources.length > 0 && (
+                {/* Arrived Income Transactions (Past & Current) */}
+                {incomeTransactions.length > 0 && (
                   <div className="em-section-label em-section-arrived">
-                    {isCurrent ? '✅ Arrived This Month' : isPast ? 'Income Sources' : ''}
+                    {isCurrent ? '✅ Arrived This Month' : 'Income Recorded'}
                   </div>
                 )}
-                {incomeSources.map(src => {
-                  const arrived = isPast || (isCurrent && (src.dayOfMonth||1) <= now.getDate());
-                  const pending = isCurrent && (src.dayOfMonth||1) > now.getDate();
-                  return (
-                    <div key={src.id} className={`em-list-item em-income-item ${pending ? 'em-item-pending' : ''}`}>
-                      <div className="em-item-left">
-                        <div>
-                          <div className="em-item-name-row">
-                            <span className={`em-badge em-badge-income`}>{src.type}</span>
-                            <span className="em-item-name">{src.description || src.type}</span>
-                          </div>
-                          <div className="em-item-meta">
-                            <span>Day {src.dayOfMonth || 1} of every month</span>
-                            {pending && <span className="em-pending-tag">• Arriving on {src.dayOfMonth}</span>}
-                            {arrived && !isFuture && <span className="em-arrived-tag">• Credited</span>}
-                          </div>
+                {incomeTransactions.map(txn => (
+                  <div key={txn.id} className="em-list-item em-income-item">
+                    <div className="em-item-left">
+                      <div>
+                        <div className="em-item-name-row">
+                          <span className="em-badge em-badge-income">{txn.category || 'Income'}</span>
+                          <span className="em-item-name">{txn.description || txn.category}</span>
                         </div>
-                      </div>
-                      <div className="em-item-right">
-                        <div className={`em-item-amount ${arrived && !isFuture ? 'em-amount-income' : 'em-amount-pending'}`}>
-                          +{formatMoney(src.amount)}
-                        </div>
-                        <div className="em-item-actions">
-                          <button className="em-action-btn em-edit-btn" onClick={() => setIncomeModal(src)}><EditIcon /></button>
-                          <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'income', id:src.id, label:src.description||src.type })}><TrashIcon /></button>
+                        <div className="em-item-meta">
+                          {isCurrent && <span className="em-arrived-tag">• Credited</span>}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="em-item-right">
+                      <div className="em-item-amount em-amount-income">
+                        +{formatMoney(txn.amount)}
+                      </div>
+                      <div className="em-item-actions">
+                        <button className="em-action-btn em-edit-btn" onClick={() => setExpenseModal(txn)}><EditIcon /></button>
+                        <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'expense', id:txn.id, label:txn.description })}><TrashIcon /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Pending/Template Income Sources */}
+                {(isCurrent || isFuture) && pendingIncomeSources.length > 0 && (
+                  <>
+                    {isCurrent && incomeTransactions.length > 0 && (
+                      <div className="em-section-label" style={{ marginTop: '16px' }}>Pending This Month</div>
+                    )}
+                    {pendingIncomeSources.map(src => (
+                      <div key={`pending-${src.id}`} className="em-list-item em-income-item em-item-pending">
+                        <div className="em-item-left">
+                          <div>
+                            <div className="em-item-name-row">
+                              <span className="em-badge em-badge-income">{src.type}</span>
+                              <span className="em-item-name">{src.description || src.type}</span>
+                            </div>
+                            <div className="em-item-meta">
+                              <span>Day {src.dayOfMonth || 1} of every month</span>
+                              {isCurrent && <span className="em-pending-tag">• Arriving on {src.dayOfMonth}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="em-item-right">
+                          <div className="em-item-amount em-amount-pending">
+                            +{formatMoney(src.amount)}
+                          </div>
+                          <div className="em-item-actions">
+                            <button className="em-action-btn em-edit-btn" onClick={() => setIncomeModal(src)}><EditIcon /></button>
+                            <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'income', id:src.id, label:src.description||src.type })}><TrashIcon /></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
                 <div className="em-list-total em-total-income">
                   <span>Total Income Received</span>
                   <span>{formatMoney(incomeForMonth)}</span>
                 </div>
                 {pendingIncomeSources.length > 0 && (
                   <div className="em-list-total em-total-pending">
-                    <span>Pending (arriving later this month)</span>
+                    <span>Pending {isCurrent ? '(arriving later this month)' : ''}</span>
                     <span>{formatMoney(pendingIncomeSources.reduce((s,i)=>s+(parseFloat(i.amount)||0),0))}</span>
                   </div>
                 )}
@@ -672,48 +696,90 @@ export default function ExpenseManagementPage() {
 
           <div className="em-list">
             
-            {/* SECTION 1: FIXED EXPENSES (TEMPLATES) */}
-            <div className="em-section-label">Fixed Monthly Expenses (Templates)</div>
-            {fixedExpenses.length === 0 ? (
-              <div style={{ padding: '12px 24px', fontSize: '13px', color: 'var(--text-muted)' }}>No fixed expenses set up yet.</div>
-            ) : (
-              fixedExpenses.map(exp => {
-                const isAddedThisMonth = expensesForMonth.some(txn => txn.fixedExpenseId === exp.id);
+            {/* SECTION 1: FIXED EXPENSES */}
+            <div className="em-section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textTransform: 'uppercase' }}>
+              <span>Fixed Expenses</span>
+              <div className="em-salary-setting" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '6px' }}>
+                <span title="Fixed expenses will be automatically deducted on this day" style={{ cursor: 'help', borderBottom: '1px dotted #818cf8', fontSize: '11px', fontWeight: 'normal', textTransform: 'none', letterSpacing: 'normal' }}>Date of fixed expense deduction</span>
+                <select value={salaryDay} onChange={e => setSalaryDay(parseInt(e.target.value))} style={{ fontSize: '12px', marginRight: '8px' }}>
+                  {[...Array(31)].map((_,i) => <option key={i+1} value={i+1}>{i+1}</option>)}
+                </select>
+                <button className="em-btn em-btn-primary em-btn-sm" onClick={handleSaveSalarySettings} style={{ padding: '2px 8px', fontSize: '11px' }}>Save</button>
+              </div>
+            </div>
+            {(() => {
+                const fixedTxns = expensesForMonth.filter(t => t.fixedExpenseId != null);
+                const pendingFixed = (isCurrent || isFuture) 
+                  ? fixedExpenses.filter(exp => !fixedTxns.some(t => t.fixedExpenseId === exp.id))
+                  : [];
+                
+                if (fixedTxns.length === 0 && pendingFixed.length === 0) {
+                  return <div style={{ padding: '12px 24px', fontSize: '13px', color: 'var(--text-muted)' }}>No fixed expenses recorded.</div>;
+                }
+                
                 return (
-                <div key={`fixed-${exp.id}`} className="em-list-item em-expense-item">
-                  <div className="em-item-left">
-                    <CategoryPill cat={exp.category||'Other'} />
-                    <div>
-                      <div className="em-item-name-row">
-                        <span className="em-item-name">{exp.description || exp.category}</span>
-                        {isAddedThisMonth && <span style={{ color: 'var(--success-color)', fontSize: '12px', marginLeft: '8px' }}>✔ Added</span>}
+                  <>
+                    {/* Arrived Fixed Expenses (from Transactions) */}
+                    {fixedTxns.map(txn => (
+                      <div key={`txn-${txn.id}`} className="em-list-item em-expense-item">
+                        <div className="em-item-left">
+                          <CategoryPill cat={txn.category||'Other'} />
+                          <div>
+                            <div className="em-item-name-row">
+                              <span className="em-item-name">{txn.description || txn.category}</span>
+                              <span style={{ color: 'var(--success-color)', fontSize: '12px', marginLeft: '8px' }}>✔ Added</span>
+                            </div>
+                            <div className="em-item-meta">Recorded on {formatDate(txn.date)}</div>
+                          </div>
+                        </div>
+                        <div className="em-item-right">
+                          <div className="em-item-amount" style={{ color: 'var(--text-muted)' }}>-{formatMoney(txn.amount)}</div>
+                          <div className="em-item-actions">
+                            <button className="em-action-btn em-edit-btn" onClick={() => setExpenseModal(txn)}><EditIcon /></button>
+                            <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'expense', id:txn.id, label:txn.description||txn.category })}><TrashIcon /></button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="em-item-meta">Auto-added on Cycle Start</div>
-                    </div>
-                  </div>
-                  <div className="em-item-right">
-                    <div className="em-item-amount" style={{ color: 'var(--text-muted)' }}>-{formatMoney(exp.amount)}</div>
-                    <div className="em-item-actions">
-                      <button className="em-action-btn em-edit-btn" onClick={() => setFixedExpModal(exp)}><EditIcon /></button>
-                      <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'fixedExpense', id:exp.id, label:exp.description||exp.category })}><TrashIcon /></button>
-                    </div>
-                  </div>
-                </div>
+                    ))}
+                    
+                    {/* Pending Fixed Expenses (from Templates) */}
+                    {pendingFixed.map(exp => (
+                      <div key={`fixed-${exp.id}`} className="em-list-item em-expense-item em-item-pending">
+                        <div className="em-item-left">
+                          <CategoryPill cat={exp.category||'Other'} />
+                          <div>
+                            <div className="em-item-name-row">
+                              <span className="em-item-name">{exp.description || exp.category}</span>
+                            </div>
+                            <div className="em-item-meta">
+                              {isFuture ? 'Will auto-add on fixed expense date' : `⏳ Arriving on day ${salaryDay}`}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="em-item-right">
+                          <div className="em-item-amount em-amount-pending">-{formatMoney(exp.amount)}</div>
+                          <div className="em-item-actions">
+                            <button className="em-action-btn em-edit-btn" onClick={() => setFixedExpModal(exp)}><EditIcon /></button>
+                            <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'fixedExpense', id:exp.id, label:exp.description||exp.category })}><TrashIcon /></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 );
-              })
-            )}
+              })()}
 
-            {/* SECTION 2: ACTUAL EXPENSES FOR THE MONTH */}
-            <div className="em-section-label" style={{ marginTop: '16px' }}>This Month's Expenses (Actuals)</div>
-            {expensesForMonth.length === 0 ? (
+            {/* SECTION 2: ADDITIONAL EXPENSES FOR THE MONTH */}
+            <div className="em-section-label" style={{ marginTop: '16px', textTransform: 'uppercase' }}>Additional Expenses</div>
+            {expensesForMonth.filter(txn => txn.fixedExpenseId == null).length === 0 ? (
               <div className="em-empty-state">
                 <div className="em-empty-icon">🧾</div>
-                <p>{isFuture ? 'No expenses yet — future month.' : `No expenses recorded in ${formatMonth(currentDate)}.`}</p>
-                {isCurrent && <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Fixed expenses will automatically appear here on your Cycle Start day.</p>}
+                <p>{isFuture ? 'No additional expenses yet — future month.' : `No additional expenses recorded in ${formatMonth(currentDate)}.`}</p>
               </div>
             ) : (
               <>
                 {expensesForMonth
+                  .filter(txn => txn.fixedExpenseId == null)
                   .slice()
                   .sort((a,b) => parseDate(b.date) - parseDate(a.date))
                   .map(txn => (
