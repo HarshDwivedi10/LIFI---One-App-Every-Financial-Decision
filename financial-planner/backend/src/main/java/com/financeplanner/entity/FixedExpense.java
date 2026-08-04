@@ -2,16 +2,15 @@ package com.financeplanner.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "transactions")
+@Table(name = "fixed_expenses")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Transaction {
+public class FixedExpense {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,12 +22,6 @@ public class Transaction {
     private User user;
 
     @Column(nullable = false)
-    private LocalDate date;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private TransactionType type;
-
     private String category;
 
     @Column(nullable = false)
@@ -36,29 +29,11 @@ public class Transaction {
 
     private String description;
 
-    @Column(name = "fixed_expense_id")
-    private Long fixedExpenseId;
-
-    @Column(name = "income_source_id")
-    private Long incomeSourceId;
-
     @Column(updatable = false)
     private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
 
     @PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    public enum TransactionType {
-        INCOME, EXPENSE, DEBIT, CREDIT
     }
 }

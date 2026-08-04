@@ -388,10 +388,20 @@ export default function RetirementPlannerPage() {
           api.get('/retirement/plan').catch(() => ({ data: null }))
         ]);
 
-        const totalIncome = incomeRes.data.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-        const totalExpenses = txnRes.data
-          .filter(t => t.type === 'EXPENSE' || t.type === 'DEBIT')
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+        const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+        const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+        const sumByDate = (txns, month, year, types) => txns
+          .filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() === month && d.getFullYear() === year && types.includes(t.type);
+          })
           .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+
+        const prevMonthIncome = incomeRes.data.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) + sumByDate(txnRes.data, prevMonth, prevYear, ['CREDIT']);
+        const prevMonthExpenses = sumByDate(txnRes.data, prevMonth, prevYear, ['EXPENSE', 'DEBIT']);
         
         // Calculate retirement savings from 5 corpus structure
         const retirementAssets = assetsRes.data
@@ -400,8 +410,8 @@ export default function RetirementPlannerPage() {
 
         setInputs(prev => ({
           ...prev,
-          monthlyIncome: prev.monthlyIncome || (totalIncome > 0 ? totalIncome.toString() : ''),
-          currentExpense: prev.currentExpense || (totalExpenses > 0 ? totalExpenses.toString() : ''),
+          monthlyIncome: prev.monthlyIncome || (prevMonthIncome > 0 ? prevMonthIncome.toString() : ''),
+          currentExpense: prev.currentExpense || (prevMonthExpenses > 0 ? prevMonthExpenses.toString() : ''),
           currentSavings: prev.currentSavings || (retirementAssets > 0 ? retirementAssets.toString() : '')
         }));
 

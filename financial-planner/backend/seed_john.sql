@@ -72,11 +72,14 @@ INSERT INTO transactions (user_id, date, type, category, amount, description, cr
 (@john_id, '2026-07-19', 'EXPENSE', 'Dining',          4900, 'Restaurants & Swiggy - July',         NOW(), NOW()),
 (@john_id, '2026-07-23', 'EXPENSE', 'Health',          3500, 'Annual health checkup',               NOW(), NOW()),
 (@john_id, '2026-07-28', 'EXPENSE', 'Shopping',        5500, 'New watch + clothes',                 NOW(), NOW()),
-(@john_id, '2026-07-10', 'EXPENSE', 'Savings',        82000, 'Automated Savings Deposit',           NOW(), NOW()),
+(@john_id, '2026-07-10', 'EXPENSE', 'Savings',        82000, 'Automated Savings Deposit',           NOW(), NOW());
 
--- AUGUST 2026 (current month — salary not yet credited, 10th is upcoming)
-(@john_id, '2026-08-01', 'EXPENSE', 'Rent',           28000, 'Monthly Rent - August',               NOW(), NOW()),
-(@john_id, '2026-08-03', 'EXPENSE', 'Groceries',       4200, 'Weekly groceries',                    NOW(), NOW());
+-- ─── 3.1 FIXED EXPENSES (Templates for new automation) ─────────
+INSERT INTO fixed_expenses (user_id, category, amount, description, created_at) VALUES
+(@john_id, 'Rent',      28000, 'Monthly Rent',      NOW()),
+(@john_id, 'Utilities',  3500, 'Electricity + Net', NOW()),
+(@john_id, 'Health',     2000, 'Gym Membership',    NOW());
+
 
 -- ─── 4. ASSETS (Fund Corpus Buckets — 3 months accumulated) ─────────────────
 -- Moderate profile: RETIREMENT 30%, LONG_TERM 25%, SHORT_TERM 15%, EMERGENCY 20%, WEALTH 10%

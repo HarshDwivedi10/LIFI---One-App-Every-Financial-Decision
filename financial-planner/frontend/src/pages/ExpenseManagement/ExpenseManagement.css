@@ -85,6 +85,11 @@
   border-color: rgba(129, 140, 248, 0.5);
 }
 
+.em-salary-setting select option {
+  background: #1a1d2e;
+  color: var(--text-primary);
+}
+
 /* ── Month Navigator Strip ── */
 .em-month-strip {
   display: flex;

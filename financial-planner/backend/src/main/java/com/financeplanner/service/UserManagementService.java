@@ -30,6 +30,10 @@ public class UserManagementService {
     private final RetirementPlanRepository retirementPlanRepository;
     private final NotificationRepository notificationRepository;
     private final MessageRepository messageRepository;
+    private final FixedExpenseRepository fixedExpenseRepository;
+    private final BankTransactionRepository bankTransactionRepository;
+    private final GmailIntegrationRepository gmailIntegrationRepository;
+    private final MonthlyStatementVerificationRepository monthlyStatementVerificationRepository;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
@@ -136,10 +140,13 @@ public class UserManagementService {
         transactionRepository.deleteAll(transactionRepository.findByUserId(userId));
         assetRepository.deleteAll(assetRepository.findByUserId(userId));
         goalRepository.deleteAll(goalRepository.findByUserId(userId));
+        fixedExpenseRepository.deleteAll(fixedExpenseRepository.findByUserId(userId));
+        bankTransactionRepository.deleteAll(bankTransactionRepository.findByUserId(userId));
+        monthlyStatementVerificationRepository.deleteAll(monthlyStatementVerificationRepository.findByUserId(userId));
+        gmailIntegrationRepository.findByUserId(userId).ifPresent(gmailIntegrationRepository::delete);
 
-        // 4. Delete retirement plan
-        retirementPlanRepository.findTopByUserIdOrderByUpdatedAtDesc(userId)
-                .ifPresent(retirementPlanRepository::delete);
+        // 4. Delete ALL retirement plans for this user (Fixes FK constraint)
+        retirementPlanRepository.deleteAll(retirementPlanRepository.findByUserId(userId));
 
         // 5. Delete coach profile if present
         coachProfileRepository.findByUser(user)

@@ -30,64 +30,86 @@ public class ReconciliationService {
     @Autowired
     private TransactionRepository transactionRepository;
 
-    public Map<String, Object> reconcileMonth(User user, List<Transaction> uploadedTransactions) {
+    @Autowired
+    private com.financeplanner.repository.MonthlyStatementVerificationRepository verificationRepository;
+
+    @Autowired
+    private com.financeplanner.repository.UserRepository userRepository;
+
+    public Map<String, Object> executeVerification(User user, com.financeplanner.dto.VerificationRequestDto req) {
         Map<String, Object> result = new HashMap<>();
         
-        // 1. Calculate Projected Savings
+        // 1. Calculate Projected Savings for the month
         List<IncomeSource> incomeSources = incomeSourceRepository.findByUserId(user.getId());
         double projectedIncome = incomeSources.stream().mapToDouble(IncomeSource::getAmount).sum();
         
-        // Fetch user's fixed/recurring expenses for the month to calculate projected savings
-        LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
+        LocalDate startOfMonth = LocalDate.of(req.getYear(), req.getMonth(), 1);
         LocalDate endOfMonth = startOfMonth.plusMonths(1).minusDays(1);
         
         List<Transaction> monthTransactions = transactionRepository.findByUserId(user.getId()).stream()
                 .filter(t -> !t.getDate().isBefore(startOfMonth) && !t.getDate().isAfter(endOfMonth))
                 .collect(Collectors.toList());
                 
-        double fixedExpenses = monthTransactions.stream()
+        double manualExpenses = monthTransactions.stream()
                 .filter(t -> "EXPENSE".equals(t.getType()) || "DEBIT".equals(t.getType()))
                 .mapToDouble(Transaction::getAmount)
                 .sum();
                 
-        double projectedSavings = Math.max(0, projectedIncome - fixedExpenses);
+        double projectedSavings = Math.max(0, projectedIncome - manualExpenses);
         
-        // 2. Calculate Actual Savings from uploaded statement
-        double actualIncome = uploadedTransactions.stream()
-                .filter(t -> "INCOME".equals(t.getType()) || "CREDIT".equals(t.getType()))
-                .mapToDouble(Transaction::getAmount)
-                .sum();
-                
-        double actualExpenses = uploadedTransactions.stream()
-                .filter(t -> "EXPENSE".equals(t.getType()) || "DEBIT".equals(t.getType()))
-                .mapToDouble(Transaction::getAmount)
-                .sum();
-                
-        double actualSavings = Math.max(0, actualIncome - actualExpenses);
+        // 2. Calculate Actual Savings based on user-verified inputs
+        double actualSavings = Math.max(0, req.getVerifiedIncome() - req.getVerifiedExpense());
         
-        // 3. Find Deficit
-        double deficit = projectedSavings - actualSavings;
+        // 3. Find Total Deficit (if they saved less than projected)
+        double totalDeficit = projectedSavings - actualSavings;
+        if (totalDeficit < 0) totalDeficit = 0; // if they saved more, no deficit penalty
+        
+        // 4. Fetch or Create Verification Record
+        MonthlyStatementVerification verification = verificationRepository
+                .findByUserIdAndYearAndMonth(user.getId(), req.getYear(), req.getMonth())
+                .orElseGet(() -> MonthlyStatementVerification.builder()
+                        .user(user)
+                        .year(req.getYear())
+                        .month(req.getMonth())
+                        .csvIncome(req.getCsvIncome())
+                        .csvExpense(req.getCsvExpense())
+                        .appliedDeficit(0.0)
+                        .build());
+                        
+        verification.setVerifiedIncome(req.getVerifiedIncome());
+        verification.setVerifiedExpense(req.getVerifiedExpense());
+        verification.setVerified(true);
+        
+        double previousAppliedDeficit = verification.getAppliedDeficit();
+        double deltaDeficit = totalDeficit - previousAppliedDeficit;
+        
+        verification.setAppliedDeficit(totalDeficit);
+        verificationRepository.save(verification);
+        
         result.put("projectedSavings", projectedSavings);
         result.put("actualSavings", actualSavings);
-        result.put("deficit", deficit);
+        result.put("totalDeficit", totalDeficit);
+        result.put("deltaDeficit", deltaDeficit);
         
-        if (deficit <= 0) {
-            result.put("message", "Savings are on track or higher than expected. No negative adjustments needed.");
+        if (deltaDeficit == 0) {
+            result.put("message", "Savings verified. No further fund adjustments needed.");
             return result;
         }
+
+        // 5. (Removed) We no longer manually modify the User's base savings, 
+        // because the global Live Total Savings is computed dynamically and 
+        // will naturally incorporate this Verification record.
         
-        // 4. Adjust Funds (Assets)
+        // 6. Adjust Funds (Assets) by the delta
         List<Asset> userAssets = assetRepository.findByUserId(user.getId());
-        
-        // Calculate total current wealth to proportionally distribute the deficit
         double totalWealth = userAssets.stream().mapToDouble(Asset::getCurrentValue).sum();
         
-        if (totalWealth > 0) {
+        if (totalWealth > 0 && deltaDeficit != 0) {
             for (Asset asset : userAssets) {
                 double proportion = asset.getCurrentValue() / totalWealth;
-                double reductionAmount = deficit * proportion;
+                double adjustment = deltaDeficit * proportion;
                 
-                double newValue = Math.max(0, asset.getCurrentValue() - reductionAmount);
+                double newValue = Math.max(0, asset.getCurrentValue() - adjustment);
                 asset.setCurrentValue(newValue);
                 assetRepository.save(asset);
             }
@@ -96,40 +118,37 @@ public class ReconciliationService {
             result.put("fundsAdjusted", false);
         }
         
-        // 5. Evaluate Goals and Push Target Dates
-        List<Goal> userGoals = goalRepository.findByUserId(user.getId());
+        // 7. Evaluate Goals and Push Target Dates if there's a positive deficit
         int delayedGoalsCount = 0;
-        
-        for (Goal goal : userGoals) {
-            // Find the corpus mapped to this goal
-            Asset mappedCorpus = userAssets.stream()
-                    .filter(a -> a.getAssetType() != null && (a.getAssetType().equals(goal.getCategory()) || a.getAssetType().contains(goal.getCategory().replace("_", " "))))
-                    .findFirst()
-                    .orElse(null);
+        if (deltaDeficit > 0) {
+            List<Goal> userGoals = goalRepository.findByUserId(user.getId());
+            for (Goal goal : userGoals) {
+                Asset mappedCorpus = userAssets.stream()
+                        .filter(a -> a.getAssetType() != null && (a.getAssetType().equals(goal.getCategory()) || a.getAssetType().contains(goal.getCategory().replace("_", " "))))
+                        .findFirst()
+                        .orElse(null);
+                        
+                if (mappedCorpus != null && goal.getMonthlyAllocation() != null && goal.getMonthlyAllocation() > 0) {
+                    long currentMonthsRemaining = ChronoUnit.MONTHS.between(LocalDate.now(), goal.getTargetDate());
+                    if (currentMonthsRemaining <= 0) currentMonthsRemaining = 1;
                     
-            if (mappedCorpus != null && goal.getMonthlyAllocation() != null && goal.getMonthlyAllocation() > 0) {
-                // Determine months remaining
-                long currentMonthsRemaining = ChronoUnit.MONTHS.between(LocalDate.now(), goal.getTargetDate());
-                if (currentMonthsRemaining <= 0) currentMonthsRemaining = 1;
-                
-                double projectedBalanceByTarget = mappedCorpus.getCurrentValue() + (goal.getMonthlyAllocation() * currentMonthsRemaining);
-                
-                if (projectedBalanceByTarget < goal.getCost()) {
-                    // Off-track due to corpus deduction! Calculate new target date
-                    double shortfall = goal.getCost() - projectedBalanceByTarget;
-                    int extraMonthsNeeded = (int) Math.ceil(shortfall / goal.getMonthlyAllocation());
+                    double projectedBalanceByTarget = mappedCorpus.getCurrentValue() + (goal.getMonthlyAllocation() * currentMonthsRemaining);
                     
-                    if (extraMonthsNeeded > 0) {
-                        goal.setTargetDate(goal.getTargetDate().plusMonths(extraMonthsNeeded));
-                        goal.setIsDelayed(true);
-                        goal.setAcknowledged(false);
-                        goalRepository.save(goal);
-                        delayedGoalsCount++;
+                    if (projectedBalanceByTarget < goal.getCost()) {
+                        double shortfall = goal.getCost() - projectedBalanceByTarget;
+                        int extraMonthsNeeded = (int) Math.ceil(shortfall / goal.getMonthlyAllocation());
+                        
+                        if (extraMonthsNeeded > 0) {
+                            goal.setTargetDate(goal.getTargetDate().plusMonths(extraMonthsNeeded));
+                            goal.setIsDelayed(true);
+                            goal.setAcknowledged(false);
+                            goalRepository.save(goal);
+                            delayedGoalsCount++;
+                        }
                     }
                 }
             }
         }
-        
         result.put("delayedGoalsCount", delayedGoalsCount);
         
         return result;
