@@ -30,49 +30,40 @@ public class FixedExpenseController {
         return fixedExpenseRepo.findByUserId(user.getId());
     }
 
-    private boolean isCycleStartReached(User dbUser, LocalDate today, LocalDateTime now) {
-        int targetHour = 0;
-        int targetMinute = 0;
-        if (dbUser.getSalaryTime() != null && !dbUser.getSalaryTime().isEmpty()) {
-            try {
-                String[] timeParts = dbUser.getSalaryTime().split(":");
-                targetHour = Integer.parseInt(timeParts[0]);
-                targetMinute = Integer.parseInt(timeParts[1]);
-            } catch (Exception e) {}
-        }
-        
-        if (dbUser.getSalaryDay() != null) {
-            if (today.getDayOfMonth() > dbUser.getSalaryDay()) {
-                return true;
-            } else if (today.getDayOfMonth() == dbUser.getSalaryDay()) {
-                if (now.getHour() > targetHour || (now.getHour() == targetHour && now.getMinute() >= targetMinute)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+    private boolean isDeductionReached(FixedExpense exp, LocalDate today) {
+        int day = exp.getDayOfMonth() != null ? exp.getDayOfMonth() : 1;
+        return today.getDayOfMonth() >= day;
     }
 
     @PostMapping
     public FixedExpense create(@RequestBody FixedExpense expense, @AuthenticationPrincipal User user) {
         expense.setUser(user);
+        if (expense.getDayOfMonth() == null || expense.getDayOfMonth() < 1) expense.setDayOfMonth(1);
+        if (expense.getDayOfMonth() > 30) expense.setDayOfMonth(30);
+
         FixedExpense saved = fixedExpenseRepo.save(expense);
         
         // Dynamic Sync Logic
         User dbUser = userRepository.findById(user.getId()).orElse(user);
-        LocalDateTime now = LocalDateTime.now();
-        LocalDate today = now.toLocalDate();
+        LocalDate today = LocalDate.now();
         
-        if (isCycleStartReached(dbUser, today, now)) {
-            Transaction expTxn = new Transaction();
-            expTxn.setUser(dbUser);
-            expTxn.setType(Transaction.TransactionType.EXPENSE);
-            expTxn.setCategory(saved.getCategory());
-            expTxn.setDescription(saved.getDescription());
-            expTxn.setAmount(saved.getAmount());
-            expTxn.setDate(today);
-            expTxn.setFixedExpenseId(saved.getId());
-            transactionRepository.save(expTxn);
+        if (isDeductionReached(saved, today)) {
+            boolean exists = transactionRepository.findByUserId(user.getId()).stream()
+                    .anyMatch(t -> t.getFixedExpenseId() != null 
+                            && t.getFixedExpenseId().equals(saved.getId())
+                            && t.getDate().getMonth() == today.getMonth()
+                            && t.getDate().getYear() == today.getYear());
+            if (!exists) {
+                Transaction expTxn = new Transaction();
+                expTxn.setUser(dbUser);
+                expTxn.setType(Transaction.TransactionType.EXPENSE);
+                expTxn.setCategory(saved.getCategory());
+                expTxn.setDescription(saved.getDescription());
+                expTxn.setAmount(saved.getAmount());
+                expTxn.setDate(today);
+                expTxn.setFixedExpenseId(saved.getId());
+                transactionRepository.save(expTxn);
+            }
         }
         return saved;
     }
@@ -85,11 +76,16 @@ public class FixedExpenseController {
                     existing.setCategory(updated.getCategory());
                     existing.setAmount(updated.getAmount());
                     existing.setDescription(updated.getDescription());
+                    if (updated.getDayOfMonth() != null) {
+                        int day = updated.getDayOfMonth();
+                        if (day < 1) day = 1;
+                        if (day > 30) day = 30;
+                        existing.setDayOfMonth(day);
+                    }
                     FixedExpense saved = fixedExpenseRepo.save(existing);
                     
                     // Dynamic Sync Logic
-                    LocalDateTime now = LocalDateTime.now();
-                    LocalDate today = now.toLocalDate();
+                    LocalDate today = LocalDate.now();
                     Optional<Transaction> monthTxn = transactionRepository.findByUserId(user.getId()).stream()
                             .filter(t -> t.getFixedExpenseId() != null 
                                     && t.getFixedExpenseId().equals(saved.getId())
@@ -97,12 +93,27 @@ public class FixedExpenseController {
                                     && t.getDate().getYear() == today.getYear())
                             .findFirst();
                             
-                    if (monthTxn.isPresent()) {
-                        Transaction t = monthTxn.get();
-                        t.setCategory(saved.getCategory());
-                        t.setAmount(saved.getAmount());
-                        t.setDescription(saved.getDescription());
-                        transactionRepository.save(t);
+                    if (isDeductionReached(saved, today)) {
+                        if (monthTxn.isPresent()) {
+                            Transaction t = monthTxn.get();
+                            t.setCategory(saved.getCategory());
+                            t.setAmount(saved.getAmount());
+                            t.setDescription(saved.getDescription());
+                            transactionRepository.save(t);
+                        } else {
+                            Transaction expTxn = new Transaction();
+                            expTxn.setUser(existing.getUser());
+                            expTxn.setType(Transaction.TransactionType.EXPENSE);
+                            expTxn.setCategory(saved.getCategory());
+                            expTxn.setDescription(saved.getDescription());
+                            expTxn.setAmount(saved.getAmount());
+                            expTxn.setDate(today);
+                            expTxn.setFixedExpenseId(saved.getId());
+                            transactionRepository.save(expTxn);
+                        }
+                    } else {
+                        // Deduction day is in the future for this month -> delete auto-created transaction if any
+                        monthTxn.ifPresent(transactionRepository::delete);
                     }
                     return ResponseEntity.ok(saved);
                 })
