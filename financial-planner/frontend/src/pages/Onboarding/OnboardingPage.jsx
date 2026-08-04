@@ -75,7 +75,8 @@ export default function OnboardingPage() {
             await api.post('/fixed-expenses', {
               category: expense.category || 'Other',
               description: expense.description || '',
-              amount: parseFloat(expense.amount)
+              amount: parseFloat(expense.amount),
+              dayOfMonth: parseInt(expense.dayOfMonth) || 1
             });
           }
         }

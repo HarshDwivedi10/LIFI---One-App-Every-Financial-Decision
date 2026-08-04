@@ -56,14 +56,17 @@ function FixedExpenseModal({ existing, onSave, onClose }) {
     category:    existing?.category    || 'Rent',
     description: existing?.description || '',
     amount:      existing?.amount      || '',
+    dayOfMonth:  existing?.dayOfMonth  || 1,
   });
 
   const handleSave = () => {
     if (!form.amount || parseFloat(form.amount) <= 0) { alert('Enter a valid amount.'); return; }
+    if (form.dayOfMonth < 1 || form.dayOfMonth > 30) { alert('Deduction day must be 1-30.'); return; }
     onSave({ 
       id: existing?.id || Date.now() + Math.random(), 
       ...form, 
-      amount:parseFloat(form.amount) 
+      amount: parseFloat(form.amount),
+      dayOfMonth: parseInt(form.dayOfMonth) || 1
     });
   };
 
@@ -76,7 +79,7 @@ function FixedExpenseModal({ existing, onSave, onClose }) {
         </div>
         <div className="em-modal-body">
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
-            This expense will automatically be added to your actual expenses every month on the fixed expense deduction date.
+            This expense will automatically be added to your actual expenses every month on its deduction date.
           </p>
           <div className="em-field-group">
             <label>Category</label>
@@ -88,9 +91,22 @@ function FixedExpenseModal({ existing, onSave, onClose }) {
             <label>Description / Note</label>
             <input type="text" placeholder="e.g. Monthly rent, electricity..." value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
           </div>
-          <div className="em-field-group">
-            <label>Amount (₹) per Month</label>
-            <input type="number" placeholder="0.00" min="0" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
+          <div className="em-field-row">
+            <div className="em-field-group">
+              <label>Amount (₹) per Month</label>
+              <input type="number" placeholder="0.00" min="0" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
+            </div>
+            <div className="em-field-group">
+              <label>Deduction Day of Month</label>
+              <input type="number" placeholder="e.g. 5" min="1" max="30" value={form.dayOfMonth} onChange={e => {
+                let val = e.target.value;
+                if (val === '') { setForm({...form, dayOfMonth: ''}); return; }
+                let num = parseInt(val);
+                if (num > 30) num = 30;
+                setForm({...form, dayOfMonth: num});
+              }} />
+              <span style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'4px' }}>Deducted on this day every month</span>
+            </div>
           </div>
         </div>
         <div className="em-modal-footer">
@@ -104,7 +120,7 @@ function FixedExpenseModal({ existing, onSave, onClose }) {
   );
 }
 
-export default function StepSavings({ data, onChange, incomeData, salaryDay, setSalaryDay }) {
+export default function StepSavings({ data, onChange, incomeData }) {
   const [fixedExpModal, setFixedExpModal] = useState(null);
 
   // Calculate total income from previous step correctly
@@ -176,12 +192,6 @@ export default function StepSavings({ data, onChange, incomeData, salaryDay, set
           <div className="em-list">
             <div className="em-section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textTransform: 'uppercase' }}>
               <span>Fixed Expenses</span>
-              <div className="em-salary-setting" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '6px' }}>
-                <span title="Fixed expenses will be automatically deducted on this day" style={{ cursor: 'help', borderBottom: '1px dotted #818cf8', fontSize: '11px', fontWeight: 'normal', textTransform: 'none', letterSpacing: 'normal', marginRight: '8px' }}>Date of fixed expense deduction</span>
-                <select value={salaryDay} onChange={e => setSalaryDay(parseInt(e.target.value))} style={{ fontSize: '12px' }}>
-                  {[...Array(30)].map((_,i) => <option key={i+1} value={i+1}>{i+1}</option>)}
-                </select>
-              </div>
             </div>
             {data.length === 0 ? (
               <div style={{ padding: '12px 24px', fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -195,6 +205,9 @@ export default function StepSavings({ data, onChange, incomeData, salaryDay, set
                     <div>
                       <div className="em-item-name-row">
                         <span className="em-item-name">{exp.description || exp.category}</span>
+                      </div>
+                      <div className="em-item-meta">
+                        <span>Deducted on day {exp.dayOfMonth || 1} of every month</span>
                       </div>
                     </div>
                   </div>

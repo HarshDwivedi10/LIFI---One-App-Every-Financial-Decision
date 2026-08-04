@@ -52,4 +52,23 @@ public class AssetController {
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
+
+    public static class ReconcileRequest {
+        public String fundType;
+        public double adjustmentAmount;
+    }
+
+    @PostMapping("/reconcile-discrepancy")
+    public ResponseEntity<Asset> reconcileDiscrepancy(@RequestBody ReconcileRequest req, @AuthenticationPrincipal User user) {
+        Asset asset = assetRepo.findByUserId(user.getId()).stream()
+                .filter(a -> req.fundType.equals(a.getAssetType()))
+                .findFirst()
+                .orElseGet(() -> {
+                    String name = req.fundType.equals("UNALLOCATED") ? "Unallocated Savings" : req.fundType + " Corpus";
+                    return Asset.builder().user(user).name(name).assetType(req.fundType).currentValue(0.0).build();
+                });
+        
+        asset.setCurrentValue(asset.getCurrentValue() + req.adjustmentAmount);
+        return ResponseEntity.ok(assetRepo.save(asset));
+    }
 }

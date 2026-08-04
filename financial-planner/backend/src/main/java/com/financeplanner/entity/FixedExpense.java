@@ -29,6 +29,10 @@ public class FixedExpense {
 
     private String description;
 
+    @Column(name = "day_of_month")
+    @Builder.Default
+    private Integer dayOfMonth = 1;
+
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
