@@ -37,6 +37,7 @@ public class IncomeController {
                     existing.setType(updated.getType());
                     existing.setAmount(updated.getAmount());
                     existing.setDescription(updated.getDescription());
+                    existing.setDayOfMonth(updated.getDayOfMonth() != null ? updated.getDayOfMonth() : 1);
                     return ResponseEntity.ok(incomeRepo.save(existing));
                 })
                 .orElse(ResponseEntity.notFound().build());

@@ -157,9 +157,7 @@ public class AdminDashboardService {
                 .name(u.getName())
                 .email(u.getEmail())
                 .status(u.getStatus() != null ? u.getStatus().name() : "PENDING")
-                .areaOfExpertise(cp.getAreaOfExpertise())
-                .qualification(cp.getQualification())
-                .yearsOfExperience(cp.getYearsOfExperience())
+                .resumeBase64(cp.getResumeBase64())
                 .createdAt(u.getCreatedAt() != null ? u.getCreatedAt().format(fmt) : "-")
                 .build();
     }

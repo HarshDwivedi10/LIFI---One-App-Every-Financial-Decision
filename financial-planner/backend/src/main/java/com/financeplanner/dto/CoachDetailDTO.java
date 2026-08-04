@@ -16,12 +16,5 @@ public class CoachDetailDTO {
 
     // Coach profile fields
     private Long profileId;
-    private String qualification;
-    private String highestEducation;
-    private Integer yearsOfExperience;
-    private String certifications;
-    private String areaOfExpertise;
-    private String phoneNumber;
-    private String address;
-    private String bio;
+    private String resumeBase64;
 }

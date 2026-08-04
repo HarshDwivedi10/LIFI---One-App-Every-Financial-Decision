@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatCurrencyFull } from '../../utils/constants';
 import { numberToIndianWords } from '../../utils/numberToWords';
 import api from '../../services/api';
+import toast from 'react-hot-toast';
 import './RetirementPlanner.css';
 
 function formatIndianWords(num) {
@@ -181,7 +182,12 @@ export default function RetirementPlannerPage() {
   const [graphType, setGraphType] = useState('INVESTMENT');
   const [selectedDataPoint, setSelectedDataPoint] = useState(null);
 
+  // Persistence State
+  const [isSaved, setIsSaved] = useState(false);
+  const [planId, setPlanId] = useState(null);
+
   // Interactivity State
+  const [isInlineEditing, setIsInlineEditing] = useState(false);
   const [editingField, setEditingField] = useState(null); // 'TC', 'SIP', 'AGE'
   const [customValues, setCustomValues] = useState({ TC: '', SIP: '', AGE: '' });
   const [interactiveResults, setInteractiveResults] = useState(null);
@@ -375,10 +381,11 @@ export default function RetirementPlannerPage() {
   useEffect(() => {
     const prefillData = async () => {
       try {
-        const [incomeRes, txnRes, assetsRes] = await Promise.all([
+        const [incomeRes, txnRes, assetsRes, planRes] = await Promise.all([
           api.get('/income').catch(() => ({ data: [] })),
           api.get('/transactions').catch(() => ({ data: [] })),
-          api.get('/assets').catch(() => ({ data: [] }))
+          api.get('/assets').catch(() => ({ data: [] })),
+          api.get('/retirement/plan').catch(() => ({ data: null }))
         ]);
 
         const totalIncome = incomeRes.data.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
@@ -397,6 +404,33 @@ export default function RetirementPlannerPage() {
           currentExpense: prev.currentExpense || (totalExpenses > 0 ? totalExpenses.toString() : ''),
           currentSavings: prev.currentSavings || (retirementAssets > 0 ? retirementAssets.toString() : '')
         }));
+
+        if (planRes && planRes.data && planRes.data.resultJson) {
+            const plan = planRes.data;
+            setPlanId(plan.id);
+            setSelectedMode(plan.mode || 'MODE1');
+            setInputs(prev => ({
+                ...prev,
+                currentAge: plan.currentAge || prev.currentAge,
+                retirementAge: plan.retirementAge || prev.retirementAge,
+                currentExpense: plan.currentMonthlyExpense || prev.currentExpense,
+                currentSavings: plan.currentRetirementSavings || prev.currentSavings,
+                monthlyIncome: plan.monthlyIncome || prev.monthlyIncome,
+                currentContribution: plan.currentMonthlyContribution || prev.currentContribution,
+            }));
+            setAssumptions(prev => ({
+                ...prev,
+                inflationRate: plan.inflationRate || prev.inflationRate,
+                expectedReturn: plan.expectedReturn || prev.expectedReturn,
+                lifestyleRatio: plan.lifestyleRatio || prev.lifestyleRatio,
+                salaryIncreaseRate: plan.salaryIncreaseRate || prev.salaryIncreaseRate,
+                withdrawalRate: plan.withdrawalRate || prev.withdrawalRate,
+            }));
+            const parsedResults = JSON.parse(plan.resultJson);
+            setResults(parsedResults);
+            setIsSaved(true);
+            setPhase('RESULTS');
+        }
       } catch (err) {}
     };
     prefillData();
@@ -463,6 +497,7 @@ export default function RetirementPlannerPage() {
       }
 
       setResults(res);
+      setIsSaved(false);
       setCalculating(false);
       setPhase('RESULTS');
       
@@ -477,6 +512,86 @@ export default function RetirementPlannerPage() {
   const resetPlanner = () => {
     setPhase('INPUTS');
     setResults(null);
+  };
+
+  const savePlan = async () => {
+    try {
+      const payload = {
+        mode: selectedMode,
+        currentAge: Number(inputs.currentAge) || 0,
+        retirementAge: Number(inputs.retirementAge) || 60,
+        currentRetirementSavings: Number(inputs.currentSavings) || 0,
+        monthlyIncome: Number(inputs.monthlyIncome) || 0,
+        currentMonthlyExpense: Number(inputs.currentExpense) || 0,
+        currentMonthlyContribution: Number(inputs.currentContribution) || 0,
+        inflationRate: assumptions.inflationRate,
+        expectedReturn: assumptions.expectedReturn,
+        withdrawalRate: assumptions.withdrawalRate,
+        lifestyleRatio: assumptions.lifestyleRatio,
+        salaryIncreaseRate: assumptions.salaryIncreaseRate,
+        resultJson: JSON.stringify(interactiveResults)
+      };
+      const res = await api.post('/retirement/plan', payload);
+      setPlanId(res.data.id);
+      setIsSaved(true);
+    } catch (err) {
+      console.error("Failed to save plan", err);
+    }
+  };
+
+  const syncToFundManagement = async () => {
+    try {
+      const profileRes = await api.get('/financial-profile').catch(() => ({ data: {} }));
+      const allocRes = await api.get('/fund-management-allocations').catch(() => ({ data: {} }));
+      
+      const salary = profileRes.data.monthlySalary || Number(inputs.monthlyIncome) || 0;
+      const expense = profileRes.data.monthlyExpense || Number(inputs.currentExpense) || 0;
+      let allocations = {};
+      try {
+        if (allocRes.data && allocRes.data.allocationsJson) {
+          allocations = JSON.parse(allocRes.data.allocationsJson);
+        }
+      } catch(e) {}
+      
+      const expensePct = salary > 0 ? (expense / salary) * 100 : 0;
+      const otherAllocations = Object.entries(allocations)
+        .filter(([k]) => k !== 'RETIREMENT')
+        .reduce((sum, [, val]) => sum + Number(val), 0);
+        
+      const maxAllowed = Math.max(0, 100 - expensePct - otherAllocations);
+      
+      const targetSIP = interactiveResults?.startingSIP || 0;
+      let requiredPct = salary > 0 ? (targetSIP / salary) * 100 : 0;
+      
+      let allocatedPct = requiredPct;
+      let wasCapped = false;
+      let amountShort = 0;
+      
+      if (requiredPct > maxAllowed) {
+        allocatedPct = maxAllowed;
+        wasCapped = true;
+        amountShort = targetSIP - (salary * (maxAllowed / 100));
+      }
+      
+      allocations['RETIREMENT'] = allocatedPct;
+      
+      await api.post('/fund-management-allocations', {
+        allocationsJson: JSON.stringify(allocations)
+      });
+      
+      if (wasCapped) {
+        toast(`Limited by Overallocation! Maximum possible allocated. You still need ₹${new Intl.NumberFormat('en-IN').format(Math.round(amountShort))} more for your Retirement SIP target. Please re-direct from another fund.`, {
+          icon: '⚠️',
+          duration: 7000
+        });
+      } else {
+        toast.success("Retirement SIP successfully synced to Fund Management!");
+      }
+      
+    } catch (err) {
+      console.error("Sync failed", err);
+      toast.error("Failed to sync with Fund Management.");
+    }
   };
 
   return (
@@ -612,6 +727,62 @@ export default function RetirementPlannerPage() {
       {phase === 'RESULTS' && results && interactiveResults && !results.error && (
         <div className="results-container animate-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: '24px', position: 'relative' }}>
           
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(35, 37, 51, 0.4)', padding: '16px 24px', borderRadius: 'var(--radius-xl)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', margin: 0 }}>Retirement Plan Results</h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Review and refine your retirement projections</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={resetPlanner}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Start Over
+              </button>
+              <button className="btn btn-secondary" onClick={() => setPhase('INPUTS')}>
+                Edit Assumptions
+              </button>
+              
+              <button 
+                className={`btn ${(!isSaved || isInlineEditing) ? 'btn-primary' : 'btn-secondary'}`} 
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => {
+                  if (!isSaved || isInlineEditing) {
+                    savePlan();
+                    setIsInlineEditing(false);
+                  } else {
+                    setIsInlineEditing(true);
+                    setIsSaved(false);
+                  }
+                }}
+              >
+                {(!isSaved || isInlineEditing) ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Save Plan
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    Edit Plan
+                  </>
+                )}
+              </button>
+
+              {isSaved && !isInlineEditing && (
+                <button 
+                  className="btn btn-primary"
+                  onClick={syncToFundManagement}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', borderColor: '#10B981', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l-3.32 3.32"/></svg>
+                  Sync to Fund Management
+                </button>
+              )}
+            </div>
+          </div>
+
           {interactiveResults.toast && (
             <div style={{
               position: 'fixed',
@@ -645,9 +816,6 @@ export default function RetirementPlannerPage() {
                     <div style={{ fontSize: 'var(--text-sm)', color: 'var(--accent-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                       Recommended Retirement Investment ({new Date().getFullYear()})
                     </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={resetPlanner}>Start Over</button>
-                    </div>
                   </div>
                   <div style={{ fontSize: '42px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.04em', lineHeight: 1, marginBottom: '24px' }}>
                     {editingField === 'SIP' ? (
@@ -665,6 +833,7 @@ export default function RetirementPlannerPage() {
                             setResults(interactiveResults); 
                             setInputs(prev => ({...prev, retirementAge: Number(inputs.currentAge) + interactiveResults.Y}));
                             setEditingField(null); 
+                            setIsSaved(false);
                           }}>Save</button>
                         </div>
                         {customValues.SIP && <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginLeft: '40px', fontWeight: 500, letterSpacing: 'normal' }}>{numberToIndianWords(customValues.SIP)}</div>}
@@ -673,7 +842,11 @@ export default function RetirementPlannerPage() {
                       <>
                         ₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(interactiveResults.startingSIP)} 
                         <span style={{fontSize: '20px', fontWeight: 500, color: 'var(--text-muted)'}}>/ month</span>
-                        <button onClick={() => { setEditingField('SIP'); setCustomValues({...customValues, SIP: interactiveResults.startingSIP}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '12px', fontSize: '20px', padding: '4px', verticalAlign: 'middle' }}>Edit</button>
+                        {isInlineEditing && (
+                           <button onClick={() => { setEditingField('SIP'); setCustomValues({...customValues, SIP: interactiveResults.startingSIP}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '12px', fontSize: '20px', padding: '4px', verticalAlign: 'middle' }} title="Edit">
+                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                           </button>
+                        )}
                       </>
                     )}
                   </div>
@@ -729,6 +902,7 @@ export default function RetirementPlannerPage() {
                                setResults(interactiveResults); 
                                setInputs(prev => ({...prev, retirementAge: Number(inputs.currentAge) + interactiveResults.Y}));
                                setEditingField(null); 
+                               setIsSaved(false);
                              }}>Save</button>
                           </div>
                           {customValues.EXPENSE && <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500, letterSpacing: 'normal' }}>{numberToIndianWords(customValues.EXPENSE)}</div>}
@@ -737,7 +911,11 @@ export default function RetirementPlannerPage() {
                         <>
                           <div style={{ display: 'flex', alignItems: 'center' }}>
                             ₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(interactiveResults.A_future)}
-                            <button onClick={() => { setEditingField('EXPENSE'); setCustomValues({...customValues, EXPENSE: interactiveResults.A_future}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '8px', fontSize: '14px' }}>Edit</button>
+                            {isInlineEditing && (
+                               <button onClick={() => { setEditingField('EXPENSE'); setCustomValues({...customValues, EXPENSE: interactiveResults.A_future}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '8px', fontSize: '14px', display: 'flex', alignItems: 'center' }} title="Edit">
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                               </button>
+                            )}
                           </div>
                           <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 500, marginTop: '2px' }}>{numberToIndianWords(interactiveResults.A_future)}</div>
                         </>
@@ -762,6 +940,7 @@ export default function RetirementPlannerPage() {
                                setResults(interactiveResults); 
                                setInputs(prev => ({...prev, retirementAge: Number(inputs.currentAge) + interactiveResults.Y}));
                                setEditingField(null); 
+                               setIsSaved(false);
                              }}>Save</button>
                           </div>
                           {customValues.TC && <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500, letterSpacing: 'normal' }}>{numberToIndianWords(customValues.TC)}</div>}
@@ -770,7 +949,11 @@ export default function RetirementPlannerPage() {
                         <>
                           <div style={{ display: 'flex', alignItems: 'center' }}>
                             ₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(interactiveResults.TC)}
-                            <button onClick={() => { setEditingField('TC'); setCustomValues({...customValues, TC: interactiveResults.TC}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '8px', fontSize: '14px' }}>Edit</button>
+                            {isInlineEditing && (
+                               <button onClick={() => { setEditingField('TC'); setCustomValues({...customValues, TC: interactiveResults.TC}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '8px', fontSize: '14px', display: 'flex', alignItems: 'center' }} title="Edit">
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                               </button>
+                            )}
                           </div>
                           <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 500, marginTop: '2px' }}>{numberToIndianWords(interactiveResults.TC)}</div>
                         </>
@@ -794,12 +977,19 @@ export default function RetirementPlannerPage() {
                              setResults(interactiveResults);
                              setInputs(prev => ({...prev, retirementAge: customValues.AGE}));
                              setEditingField(null);
+                             setIsSaved(false);
                            }}>Save</button>
                         </div>
                       ) : (
                         <>
-                          {Number(inputs.currentAge) + interactiveResults.Y} Years
-                          <button onClick={() => { setEditingField('AGE'); setCustomValues({...customValues, AGE: Number(inputs.currentAge) + interactiveResults.Y}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '8px', fontSize: '14px' }}>Edit</button>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                             {Number(inputs.currentAge) + interactiveResults.Y} Years
+                             {isInlineEditing && (
+                                <button onClick={() => { setEditingField('AGE'); setCustomValues({...customValues, AGE: Number(inputs.currentAge) + interactiveResults.Y}); }} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', marginLeft: '8px', fontSize: '14px', display: 'flex', alignItems: 'center' }} title="Edit">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                                </button>
+                             )}
+                          </div>
                         </>
                       )}
                     </div>
@@ -1075,11 +1265,6 @@ export default function RetirementPlannerPage() {
               )}
             </div>
           )}
-              <div style={{ textAlign: 'center', marginTop: '32px' }}>
-                <button className="btn btn-secondary" onClick={resetPlanner}>Start Over</button>
-              </div>
-
-
 
           <div style={{ padding: '16px', marginTop: '32px', background: 'rgba(239, 163, 68, 0.1)', border: '1px solid rgba(239, 163, 68, 0.3)', borderRadius: 'var(--radius-md)', color: 'var(--warning)' }}>
             <strong> Disclaimer:</strong> These figures are approximate estimates following industry-standard calculation models. Market returns are not guaranteed.

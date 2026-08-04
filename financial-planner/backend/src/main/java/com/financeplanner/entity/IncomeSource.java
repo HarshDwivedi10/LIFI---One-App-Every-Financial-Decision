@@ -30,6 +30,13 @@ public class IncomeSource {
 
     private String description;
 
+    /**
+     * Day of the month this income arrives (1-31).
+     * e.g. salary on 10th, freelance on 12th.
+     */
+    @Column(name = "day_of_month")
+    private Integer dayOfMonth = 1;
+
     @Column(updatable = false)
     private LocalDateTime createdAt;
 

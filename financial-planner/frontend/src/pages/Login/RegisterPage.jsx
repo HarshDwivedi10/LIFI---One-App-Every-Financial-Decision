@@ -13,14 +13,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   
   // Coach specific fields
-  const [qualification, setQualification] = useState('');
-  const [highestEducation, setHighestEducation] = useState('');
-  const [yearsOfExperience, setYearsOfExperience] = useState('');
-  const [certifications, setCertifications] = useState('');
-  const [areaOfExpertise, setAreaOfExpertise] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [address, setAddress] = useState('');
-  const [bio, setBio] = useState('');
+  const [resumeBase64, setResumeBase64] = useState('');
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,13 +22,24 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setResumeBase64(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !password.trim()) return;
 
     if (role === 'COACH') {
-      if (!qualification.trim() || !highestEducation.trim() || !yearsOfExperience || !areaOfExpertise.trim() || !phoneNumber.trim() || !address.trim() || !bio.trim()) {
-        setError('Please fill in all required coach fields.');
+      if (!resumeBase64) {
+        setError('Please upload your resume to register as a coach.');
         return;
       }
     }
@@ -50,14 +54,7 @@ export default function RegisterPage() {
         password,
         role,
         ...(role === 'COACH' && {
-          qualification,
-          highestEducation,
-          yearsOfExperience: parseInt(yearsOfExperience, 10),
-          certifications,
-          areaOfExpertise,
-          phoneNumber,
-          address,
-          bio
+          resumeBase64
         })
       };
 
@@ -209,105 +206,19 @@ export default function RegisterPage() {
               </div>
 
               {role === 'COACH' && (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="qualification">Qualification *</label>
-                    <input
-                      id="qualification"
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. CFA, CPA"
-                      value={qualification}
-                      onChange={(e) => setQualification(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="highestEducation">Highest Education *</label>
-                    <input
-                      id="highestEducation"
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. Master's in Finance"
-                      value={highestEducation}
-                      onChange={(e) => setHighestEducation(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="yearsOfExperience">Years of Experience *</label>
-                    <input
-                      id="yearsOfExperience"
-                      type="number"
-                      min="0"
-                      className="form-input"
-                      placeholder="e.g. 5"
-                      value={yearsOfExperience}
-                      onChange={(e) => setYearsOfExperience(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="certifications">Certifications (Optional)</label>
-                    <input
-                      id="certifications"
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. Certified Financial Planner (CFP)"
-                      value={certifications}
-                      onChange={(e) => setCertifications(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="areaOfExpertise">Area of Expertise *</label>
-                    <input
-                      id="areaOfExpertise"
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. Retirement Planning"
-                      value={areaOfExpertise}
-                      onChange={(e) => setAreaOfExpertise(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="phoneNumber">Phone Number *</label>
-                    <input
-                      id="phoneNumber"
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. +1 234 567 8900"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="address">Address *</label>
-                    <input
-                      id="address"
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. 123 Finance St, NY"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="bio">Bio/About *</label>
-                    <textarea
-                      id="bio"
-                      className="form-input"
-                      placeholder="Briefly describe your background and coaching style..."
-                      value={bio}
-                      onChange={(e) => setBio(e.target.value)}
-                      disabled={loading}
-                      rows="4"
-                    />
-                  </div>
-                </>
+                <div className="form-group">
+                  <label htmlFor="resumeUpload">Upload Your Resume *</label>
+                  <input
+                    id="resumeUpload"
+                    type="file"
+                    className="form-input"
+                    accept=".pdf,.doc,.docx,.rtf,.txt"
+                    onChange={handleFileUpload}
+                    disabled={loading}
+                    style={{ padding: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--border-subtle)' }}
+                  />
+                  <small style={{ color: 'var(--text-muted)', marginTop: '8px', display: 'block' }}>Accepted formats: PDF, DOCX, DOC. Max size 5MB.</small>
+                </div>
               )}
               
               <button type="submit" className="btn btn-primary auth-btn" disabled={loading || !name.trim() || !email.trim() || !password.trim()}>

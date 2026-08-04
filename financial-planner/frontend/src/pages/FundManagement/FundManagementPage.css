@@ -286,3 +286,13 @@ input[type=range]::-webkit-slider-runnable-track {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Hide number input spin buttons */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}

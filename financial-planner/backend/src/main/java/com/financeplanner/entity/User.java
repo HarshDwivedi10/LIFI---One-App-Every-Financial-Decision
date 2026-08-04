@@ -31,6 +31,9 @@ public class User implements UserDetails {
     @Column(name = "salary_day")
     private Integer salaryDay;
 
+    @Column(name = "salary_time")
+    private String salaryTime;
+
     @Column(name = "manual_total_savings")
     private Double manualTotalSavings;
 

@@ -11,6 +11,7 @@ import ExpenseManagementPage from './pages/ExpenseManagement/ExpenseManagementPa
 import InvestmentPlannerPage from './pages/InvestmentPlanner/InvestmentPlannerPage';
 import GoalManagementPage from './pages/GoalManagement/GoalManagementPage';
 import FundManagementPage from './pages/FundManagement/FundManagementPage';
+import ExpertConnectPage from './pages/ExpertConnect/ExpertConnectPage';
 import DashboardPage from './pages/Home/HomePage';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import CoachManagement from './pages/Admin/CoachManagement';
@@ -121,6 +122,7 @@ export default function App() {
             <Route path="retirement-planner" element={<RetirementPlannerPage />} />
             <Route path="goal-management" element={<GoalManagementPage />} />
             <Route path="fund-management" element={<FundManagementPage />} />
+            <Route path="expert-connect" element={<ExpertConnectPage />} />
           </Route>
         </Routes>
         </NotificationProvider>
