@@ -27,8 +27,10 @@ export default function FundManagementPage() {
   const [monthlyExpense, setMonthlyExpense] = useState(0);
   const [expectedMonthlySavings, setExpectedMonthlySavings] = useState(0);
   const [savingsGrowth, setSavingsGrowth] = useState(0);
-  const [editingSavings, setEditingSavings] = useState(false);
-  const [editedSavingsValue, setEditedSavingsValue] = useState('');
+  
+  const [liveTotalSavings, setLiveTotalSavings] = useState(0);
+  const [preExistingSavings, setPreExistingSavings] = useState(0);
+  const [preExistingSavingsDate, setPreExistingSavingsDate] = useState('');
   
   const [preExistingAssets, setPreExistingAssets] = useState({});
   const [retirementPercent, setRetirementPercent] = useState(0);
@@ -88,6 +90,10 @@ export default function FundManagementPage() {
       setMonthlyExpense(currentMonthExpenses);
       setExpectedMonthlySavings(currentSavings);
       
+      setLiveTotalSavings(settings.liveTotalSavings || 0);
+      setPreExistingSavings(settings.manualTotalSavings || 0);
+      setPreExistingSavingsDate(settings.preExistingSavingsDate || '');
+      
       let growth = 0;
       if (prevSavings > 0) {
         growth = ((currentSavings - prevSavings) / prevSavings) * 100;
@@ -126,7 +132,8 @@ export default function FundManagementPage() {
   const handleSaveChanges = async () => {
     try {
       const payload = {
-        manualTotalSavings: 0, // Clear the override so it uses dynamic income
+        manualTotalSavings: preExistingSavings,
+        preExistingSavingsDate: preExistingSavingsDate,
         fundAllocationsJson: JSON.stringify({ core: allocations, retirement: retirementPercent })
       };
       await toast.promise(api.put('/user/settings', payload), {
@@ -214,7 +221,7 @@ export default function FundManagementPage() {
     return sum + (preExistingAssets[fund.id] || 0) + calculateRupees(val);
   }, 0);
   const unallocatedFunds = Math.max(0, expectedMonthlySavings - calculateRupees(totalAlloc));
-  const totalSavingsDisplay = totalAmountInFunds + unallocatedFunds;
+  const totalSavingsDisplay = liveTotalSavings;
 
   const formatNumberToWords = (num) => {
     if (num >= 10000000) return (num / 10000000).toFixed(2).replace(/\.00$/, '') + ' Crores';
@@ -280,6 +287,28 @@ export default function FundManagementPage() {
                  Select Investment Profile
                </button>
              )}
+             
+             <div style={{ marginBottom: '24px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                 <div style={{ fontSize: '12px', color: '#8B8C9A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pre-Existing Savings</div>
+                 {preExistingSavingsDate && !isEditing && (
+                   <div style={{ fontSize: '10px', color: '#818CF8' }}>Since {preExistingSavingsDate}</div>
+                 )}
+               </div>
+               
+               {isEditing ? (
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                   <div style={{ display: 'flex', gap: '8px' }}>
+                     <span style={{ color: '#8B8C9A', alignSelf: 'center' }}>₹</span>
+                     <input type="number" value={preExistingSavings} onChange={e => setPreExistingSavings(parseFloat(e.target.value)||0)} style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '18px', fontWeight: 600, outline: 'none', borderBottom: '1px solid #818CF8' }} />
+                   </div>
+                   <input type="date" value={preExistingSavingsDate} onChange={e => setPreExistingSavingsDate(e.target.value)} style={{ background: 'transparent', border: '1px solid #232533', color: '#8B8C9A', fontSize: '12px', padding: '4px', borderRadius: '4px' }} />
+                 </div>
+               ) : (
+                 <div style={{ fontSize: '20px', fontWeight: 600, color: '#EAB308' }}>₹{new Intl.NumberFormat('en-IN').format(preExistingSavings)}</div>
+               )}
+             </div>
+
              <div className="fm-total-savings" style={{ marginBottom: '8px' }}>Total Savings</div>
              <div className="fm-savings-amount" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                <span style={{ fontSize: '36px' }}>₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(totalSavingsDisplay)}</span>

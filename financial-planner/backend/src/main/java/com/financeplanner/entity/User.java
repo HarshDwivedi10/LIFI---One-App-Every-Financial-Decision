@@ -37,6 +37,9 @@ public class User implements UserDetails {
     @Column(name = "manual_total_savings")
     private Double manualTotalSavings;
 
+    @Column(name = "pre_existing_savings_date")
+    private String preExistingSavingsDate;
+
     @Column(name = "fund_allocations_json", columnDefinition = "TEXT")
     private String fundAllocationsJson;
 

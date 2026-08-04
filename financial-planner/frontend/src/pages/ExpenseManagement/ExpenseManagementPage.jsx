@@ -88,18 +88,62 @@ function IncomeModal({ existing, onSave, onClose }) {
   );
 }
 
-// ─── Expense Modal ────────────────────────────────────────────────────────────
-function ExpenseModal({ existing, currentMonth, onSave, onClose }) {
-  const parseDate = (d) => {
-    if (!d) return today();
-    if (Array.isArray(d)) return `${d[0]}-${String(d[1]).padStart(2,'0')}-${String(d[2]).padStart(2,'0')}`;
-    return d.split('T')[0] || d;
+// ─── Fixed Expense Modal ────────────────────────────────────────────────────────
+function FixedExpenseModal({ existing, onSave, onClose }) {
+  const [form, setForm] = useState({
+    category:    existing?.category    || 'Rent',
+    description: existing?.description || '',
+    amount:      existing?.amount      || '',
+  });
+
+  const handleSave = () => {
+    if (!form.amount || parseFloat(form.amount) <= 0) { toast.error('Enter a valid amount.'); return; }
+    onSave({ ...existing, ...form, amount:parseFloat(form.amount) });
   };
+
+  return (
+    <div className="em-modal-overlay" onClick={onClose}>
+      <div className="em-modal" onClick={e => e.stopPropagation()}>
+        <div className="em-modal-header">
+          <h3>{existing?.id ? 'Edit Fixed Expense' : 'Add Fixed Expense'}</h3>
+          <button className="em-modal-close" onClick={onClose}><CloseIcon /></button>
+        </div>
+        <div className="em-modal-body">
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
+            This expense will automatically be added to your actual expenses every month on your Cycle Start day.
+          </p>
+          <div className="em-field-group">
+            <label>Category</label>
+            <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+              {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="em-field-group">
+            <label>Description / Note</label>
+            <input type="text" placeholder="e.g. Monthly rent, electricity..." value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
+          </div>
+          <div className="em-field-group">
+            <label>Amount (₹) per Month</label>
+            <input type="number" placeholder="0.00" min="0" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
+          </div>
+        </div>
+        <div className="em-modal-footer">
+          <button className="em-btn em-btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="em-btn em-btn-danger" onClick={handleSave}>
+            {existing?.id ? 'Save Changes' : 'Add Fixed Expense'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Expense Modal (Actuals) ───────────────────────────────────────────────────
+function ExpenseModal({ existing, onSave, onClose }) {
   const [form, setForm] = useState({
     category:    existing?.category    || 'Other',
     description: existing?.description || '',
     amount:      existing?.amount      || '',
-    date:        parseDate(existing?.date),
   });
 
   const handleSave = () => {
@@ -111,10 +155,13 @@ function ExpenseModal({ existing, currentMonth, onSave, onClose }) {
     <div className="em-modal-overlay" onClick={onClose}>
       <div className="em-modal" onClick={e => e.stopPropagation()}>
         <div className="em-modal-header">
-          <h3>{existing?.id ? 'Edit Expense' : 'Add Expense'}</h3>
+          <h3>{existing?.id ? 'Edit Actual Expense' : 'Add Additional Expense'}</h3>
           <button className="em-modal-close" onClick={onClose}><CloseIcon /></button>
         </div>
         <div className="em-modal-body">
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
+            This will be recorded for the currently selected month. No date needed.
+          </p>
           <div className="em-field-group">
             <label>Category</label>
             <select value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
@@ -123,17 +170,11 @@ function ExpenseModal({ existing, currentMonth, onSave, onClose }) {
           </div>
           <div className="em-field-group">
             <label>Description / Note</label>
-            <input type="text" placeholder="e.g. Monthly rent, Amazon order..." value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
+            <input type="text" placeholder="e.g. Amazon order, dinner..." value={form.description} onChange={e => setForm({...form, description: e.target.value})} />
           </div>
-          <div className="em-field-row">
-            <div className="em-field-group">
-              <label>Amount (₹)</label>
-              <input type="number" placeholder="0.00" min="0" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
-            </div>
-            <div className="em-field-group">
-              <label>Date</label>
-              <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
-            </div>
+          <div className="em-field-group">
+            <label>Amount (₹)</label>
+            <input type="number" placeholder="0.00" min="0" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
           </div>
         </div>
         <div className="em-modal-footer">
@@ -170,40 +211,120 @@ function ConfirmDelete({ label, onConfirm, onClose }) {
   );
 }
 
+// ─── Reconciliation Modal (CSV Verification) ──────────────────────────────────
+function ReconciliationModal({ previewData, manualIncome, manualExpense, monthLabel, onSave, onClose }) {
+  const [form, setForm] = useState({
+    verifiedIncome: previewData.csvIncome || 0,
+    verifiedExpense: previewData.csvExpense || 0
+  });
+
+  const handleSave = () => {
+    onSave({
+      verifiedIncome: parseFloat(form.verifiedIncome) || 0,
+      verifiedExpense: parseFloat(form.verifiedExpense) || 0,
+      csvIncome: previewData.csvIncome,
+      csvExpense: previewData.csvExpense
+    });
+  };
+
+  return (
+    <div className="em-modal-overlay" onClick={onClose}>
+      <div className="em-modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+        <div className="em-modal-header">
+          <h3>Statement Verification - {monthLabel}</h3>
+          <button className="em-modal-close" onClick={onClose}><CloseIcon /></button>
+        </div>
+        <div className="em-modal-body">
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
+            Compare your manually entered application data with the parsed CSV data. You can adjust the parsed numbers below if necessary before verifying.
+          </p>
+          <div style={{ display: 'flex', gap: '24px' }}>
+            {/* Manual App Data */}
+            <div style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Manual App Data</h4>
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Income</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--success-color)' }}>₹{manualIncome}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Expenses</div>
+                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--danger-color)' }}>₹{manualExpense}</div>
+              </div>
+            </div>
+
+            {/* CSV Parsed Data (Editable) */}
+            <div style={{ flex: 1, padding: '16px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '8px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '12px', textTransform: 'uppercase', color: '#818cf8' }}>Parsed CSV Data</h4>
+              <div className="em-field-group" style={{ marginBottom: '12px' }}>
+                <label>Verified Income (₹)</label>
+                <input type="number" min="0" value={form.verifiedIncome} onChange={e => setForm({...form, verifiedIncome: e.target.value})} />
+              </div>
+              <div className="em-field-group" style={{ marginBottom: '0' }}>
+                <label>Verified Expense (₹)</label>
+                <input type="number" min="0" value={form.verifiedExpense} onChange={e => setForm({...form, verifiedExpense: e.target.value})} />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="em-modal-footer">
+          <button className="em-btn em-btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="em-btn em-btn-primary" onClick={handleSave}>Verify & Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 //  MAIN PAGE
 // ═══════════════════════════════════════════════════════════
 export default function ExpenseManagementPage() {
   const [incomeSources, setIncomeSources]   = useState([]);
   const [transactions,  setTransactions]    = useState([]);
+  const [fixedExpenses, setFixedExpenses]   = useState([]);
   const [loading,       setLoading]         = useState(true);
   const [salaryDay,     setSalaryDay]       = useState(1);
   const [salaryTime,    setSalaryTime]      = useState('09:00');
-  const [showExpHistory, setShowExpHistory] = useState(false);
 
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
 
+  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [reconciliationPreview, setReconciliationPreview] = useState(null);
+
   const [incomeModal,   setIncomeModal]   = useState(null);
   const [expenseModal,  setExpenseModal]  = useState(null);
+  const [fixedExpModal, setFixedExpModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const fileRef = useRef();
 
   useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchVerification(); }, [currentDate]);
+
+  const fetchVerification = async () => {
+    try {
+      const res = await api.get('/transactions/verification-status', {
+        params: { year: currentDate.getFullYear(), month: currentDate.getMonth() + 1 }
+      });
+      setVerificationStatus(res.data);
+    } catch { setVerificationStatus(null); }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [incRes, txnRes, userRes] = await Promise.all([
+      const [incRes, txnRes, fixedRes, userRes] = await Promise.all([
         api.get('/income').catch(() => ({ data: [] })),
         api.get('/transactions').catch(() => ({ data: [] })),
+        api.get('/fixed-expenses').catch(() => ({ data: [] })),
         api.get('/user/settings').catch(() => ({ data: {} })),
       ]);
       setIncomeSources(incRes.data  || []);
       setTransactions(txnRes.data   || []);
+      setFixedExpenses(fixedRes.data || []);
       setSalaryDay(userRes.data.salaryDay  || 1);
       setSalaryTime(userRes.data.salaryTime || '09:00');
     } catch { toast.error('Failed to load data.'); }
@@ -247,21 +368,15 @@ export default function ExpenseManagementPage() {
   }, [transactions, currentDate, isFuture]);
 
   // ─── Income calculation (per month) ────────────────────────
-  // Rule: each income source arrives on its `dayOfMonth` every month.
-  // Past months  → full income (all sources credited)
-  // Current month → only sources whose dayOfMonth <= today's date
-  // Future months → 0
   const incomeForMonth = useMemo(() => {
     if (isFuture) return 0;
     if (isPast)   return incomeSources.reduce((s, i) => s + (parseFloat(i.amount)||0), 0);
-    // current month: only sources whose day has arrived
     const todayDay = now.getDate();
     return incomeSources
       .filter(i => (i.dayOfMonth || 1) <= todayDay)
       .reduce((s, i) => s + (parseFloat(i.amount)||0), 0);
   }, [incomeSources, currentDate, isFuture, isPast]);
 
-  // Which income sources are "active" (arrived) for current view
   const activeIncomeSources = useMemo(() => {
     if (isFuture) return [];
     if (isPast)   return incomeSources;
@@ -278,30 +393,11 @@ export default function ExpenseManagementPage() {
   const totalExpenses = expensesForMonth.reduce((s, t) => s + (parseFloat(t.amount)||0), 0);
   const netSavings    = incomeForMonth - totalExpenses;
 
-  // ─── Expense history grouped by month ─────────────────────
-  const expenseHistory = useMemo(() => {
-    const groups = {};
-    transactions
-      .filter(t => t.type === 'EXPENSE' || t.type === 'DEBIT')
-      .forEach(t => {
-        const d = parseDate(t.date);
-        if (!d) return;
-        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        const label = d.toLocaleDateString('en-US', { month:'long', year:'numeric' });
-        if (!groups[key]) groups[key] = { label, total:0, items:[] };
-        groups[key].total += parseFloat(t.amount)||0;
-        groups[key].items.push(t);
-      });
-    return Object.entries(groups)
-      .sort(([a],[b]) => b.localeCompare(a)) // newest first
-      .map(([, v]) => v);
-  }, [transactions]);
-
   // ─── Nav ──────────────────────────────────────────────────
   const goPrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()-1, 1));
   const goNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth()+1, 1));
 
-  // ─── Income CRUD ──────────────────────────────────────────
+  // ─── CRUD Handlers ──────────────────────────────────────────
   const handleSaveIncome = async (formData) => {
     const payload = { type: formData.type, amount: formData.amount, description: formData.description, dayOfMonth: formData.dayOfMonth };
     if (formData.id) {
@@ -312,12 +408,24 @@ export default function ExpenseManagementPage() {
     setIncomeModal(null); await fetchData();
   };
 
-  const handleSaveExpense = async (formData) => {
-    const payload = { date: formData.date, type:'EXPENSE', category: formData.category, amount: formData.amount, description: formData.description };
+  const handleSaveFixedExpense = async (formData) => {
+    const payload = { category: formData.category, amount: formData.amount, description: formData.description };
     if (formData.id) {
-      await toast.promise(api.put(`/transactions/${formData.id}`, payload), { loading:'Updating...', success:'Expense updated!', error:'Failed to update.' });
+      await toast.promise(api.put(`/fixed-expenses/${formData.id}`, payload), { loading:'Updating...', success:'Fixed expense updated!', error:'Failed.' });
     } else {
-      await toast.promise(api.post('/transactions/bulk', [payload]), { loading:'Adding...', success:'Expense added!', error:'Failed to add.' });
+      await toast.promise(api.post('/fixed-expenses', payload), { loading:'Adding...', success:'Fixed expense added!', error:'Failed.' });
+    }
+    setFixedExpModal(null); await fetchData();
+  };
+
+  const handleSaveExpense = async (formData) => {
+    // For actual expenses, we use the currently viewed month (day 1 is fine since we hide days anyway)
+    const targetDate = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`;
+    const payload = { date: targetDate, type:'EXPENSE', category: formData.category, amount: formData.amount, description: formData.description };
+    if (formData.id) {
+      await toast.promise(api.put(`/transactions/${formData.id}`, payload), { loading:'Updating...', success:'Expense updated!', error:'Failed.' });
+    } else {
+      await toast.promise(api.post('/transactions/bulk', [payload]), { loading:'Adding...', success:'Expense added!', error:'Failed.' });
     }
     setExpenseModal(null); await fetchData();
   };
@@ -326,6 +434,8 @@ export default function ExpenseManagementPage() {
     const { type, id } = deleteConfirm;
     if (type === 'income') {
       await toast.promise(api.delete(`/income/${id}`), { loading:'Deleting...', success:'Income source deleted.', error:'Failed.' });
+    } else if (type === 'fixedExpense') {
+      await toast.promise(api.delete(`/fixed-expenses/${id}`), { loading:'Deleting...', success:'Fixed expense deleted.', error:'Failed.' });
     } else {
       await toast.promise(api.delete(`/transactions/${id}`), { loading:'Deleting...', success:'Expense deleted.', error:'Failed.' });
     }
@@ -336,10 +446,35 @@ export default function ExpenseManagementPage() {
     const file = e.target.files[0];
     if (!file?.name.endsWith('.csv')) { toast.error('Only CSV files accepted.'); return; }
     const fd = new FormData(); fd.append('file', file);
-    await toast.promise(api.post('/transactions/reconcile-statement', fd, { headers:{ 'Content-Type':'multipart/form-data' } }), {
-      loading:'Reconciling...', success:'Statement reconciled!', error:'Reconciliation failed.'
-    });
-    e.target.value = ''; await fetchData();
+    try {
+      const toastId = toast.loading('Parsing CSV...');
+      const res = await api.post('/transactions/parse-csv-preview', fd, { headers:{ 'Content-Type':'multipart/form-data' } });
+      toast.dismiss(toastId);
+      setReconciliationPreview(res.data);
+    } catch (err) {
+      toast.error('Failed to parse CSV.');
+    }
+    e.target.value = '';
+  };
+
+  const handleSaveVerification = async (verifiedData) => {
+    try {
+      const payload = {
+        year: currentDate.getFullYear(),
+        month: currentDate.getMonth() + 1,
+        ...verifiedData
+      };
+      await toast.promise(api.post('/transactions/save-verification', payload), {
+        loading: 'Verifying & Reconciling...',
+        success: 'Month verified successfully!',
+        error: 'Failed to verify.'
+      });
+      setReconciliationPreview(null);
+      await fetchVerification(); // Refresh tick mark status
+      await fetchData(); // Refresh assets/goals if affected
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleSaveSalarySettings = async () => {
@@ -361,7 +496,7 @@ export default function ExpenseManagementPage() {
         </div>
         <div className="em-header-actions">
           <div className="em-salary-setting">
-            <span>Salary Day</span>
+            <span title="Fixed expenses will be automatically deducted on this day" style={{ cursor: 'help', borderBottom: '1px dotted #818cf8' }}>Cycle Start</span>
             <select value={salaryDay} onChange={e => setSalaryDay(parseInt(e.target.value))}>
               {[...Array(31)].map((_,i) => <option key={i+1} value={i+1}>{i+1}</option>)}
             </select>
@@ -369,11 +504,30 @@ export default function ExpenseManagementPage() {
             <input type="time" value={salaryTime} onChange={e => setSalaryTime(e.target.value)} />
             <button className="em-btn em-btn-primary em-btn-sm" onClick={handleSaveSalarySettings}>Save</button>
           </div>
-          <button className="em-btn em-btn-ghost em-btn-sm" onClick={() => fileRef.current?.click()}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Upload CSV
-          </button>
-          <input type="file" ref={fileRef} style={{ display:'none' }} accept=".csv" onChange={handleFileUpload} />
+          {verificationStatus?.isVerified ? (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ color: 'var(--success-color)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Verified
+              </div>
+              <button className="em-btn em-btn-ghost em-btn-sm" onClick={() => setReconciliationPreview({
+                csvIncome: verificationStatus.csvIncome,
+                csvExpense: verificationStatus.csvExpense,
+                verifiedIncome: verificationStatus.verifiedIncome,
+                verifiedExpense: verificationStatus.verifiedExpense
+              })}>
+                View / Edit Changes
+              </button>
+            </div>
+          ) : (
+            <>
+              <button className="em-btn em-btn-ghost em-btn-sm" onClick={() => fileRef.current?.click()}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Verify Savings via Bank Statement
+              </button>
+              <input type="file" ref={fileRef} style={{ display:'none' }} accept=".csv" onChange={handleFileUpload} />
+            </>
+          )}
         </div>
       </div>
 
@@ -401,7 +555,7 @@ export default function ExpenseManagementPage() {
           {isCurrent && pendingIncomeSources.length > 0 && (
             <div className="em-pill-note">+{formatMoney(pendingIncomeSources.reduce((s,i)=>s+(parseFloat(i.amount)||0),0))} arriving soon</div>
           )}
-          {isFuture && <div className="em-pill-note">Salary day not reached yet</div>}
+          {isFuture && <div className="em-pill-note">Cycle day not reached yet</div>}
         </div>
         <div className="em-summary-pill em-pill-expense">
           <div className="em-pill-label">Total Expenses</div>
@@ -410,7 +564,7 @@ export default function ExpenseManagementPage() {
         <div className={`em-summary-pill ${netSavings >= 0 ? 'em-pill-savings' : 'em-pill-deficit'}`}>
           <div className="em-pill-label">Net Savings</div>
           <div className="em-pill-value">{netSavings < 0 ? '-' : ''}{formatMoney(netSavings)}</div>
-          {isCurrent && <div className="em-pill-note">Auto-deposited to funds on salary day</div>}
+          {isCurrent && <div className="em-pill-note">Auto-deposited to funds on cycle start</div>}
         </div>
       </div>
 
@@ -506,17 +660,56 @@ export default function ExpenseManagementPage() {
                 <p>{formatMonth(currentDate)}</p>
               </div>
             </div>
-            <button className="em-add-btn em-add-expense" onClick={() => setExpenseModal('new')}>
-              <PlusIcon /> Add Expense
-            </button>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button className="em-add-btn em-add-expense" style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.1)' }} onClick={() => setFixedExpModal('new')}>
+                <PlusIcon /> Fixed Expense
+              </button>
+              <button className="em-add-btn em-add-expense" onClick={() => setExpenseModal('new')}>
+                <PlusIcon /> Additional Expense
+              </button>
+            </div>
           </div>
 
           <div className="em-list">
+            
+            {/* SECTION 1: FIXED EXPENSES (TEMPLATES) */}
+            <div className="em-section-label">Fixed Monthly Expenses (Templates)</div>
+            {fixedExpenses.length === 0 ? (
+              <div style={{ padding: '12px 24px', fontSize: '13px', color: 'var(--text-muted)' }}>No fixed expenses set up yet.</div>
+            ) : (
+              fixedExpenses.map(exp => {
+                const isAddedThisMonth = expensesForMonth.some(txn => txn.fixedExpenseId === exp.id);
+                return (
+                <div key={`fixed-${exp.id}`} className="em-list-item em-expense-item">
+                  <div className="em-item-left">
+                    <CategoryPill cat={exp.category||'Other'} />
+                    <div>
+                      <div className="em-item-name-row">
+                        <span className="em-item-name">{exp.description || exp.category}</span>
+                        {isAddedThisMonth && <span style={{ color: 'var(--success-color)', fontSize: '12px', marginLeft: '8px' }}>✔ Added</span>}
+                      </div>
+                      <div className="em-item-meta">Auto-added on Cycle Start</div>
+                    </div>
+                  </div>
+                  <div className="em-item-right">
+                    <div className="em-item-amount" style={{ color: 'var(--text-muted)' }}>-{formatMoney(exp.amount)}</div>
+                    <div className="em-item-actions">
+                      <button className="em-action-btn em-edit-btn" onClick={() => setFixedExpModal(exp)}><EditIcon /></button>
+                      <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'fixedExpense', id:exp.id, label:exp.description||exp.category })}><TrashIcon /></button>
+                    </div>
+                  </div>
+                </div>
+                );
+              })
+            )}
+
+            {/* SECTION 2: ACTUAL EXPENSES FOR THE MONTH */}
+            <div className="em-section-label" style={{ marginTop: '16px' }}>This Month's Expenses (Actuals)</div>
             {expensesForMonth.length === 0 ? (
               <div className="em-empty-state">
                 <div className="em-empty-icon">🧾</div>
-                <p>{isFuture ? 'No expenses yet — future month.' : `No expenses in ${formatMonth(currentDate)}.`}</p>
-                {!isFuture && <button className="em-btn em-btn-danger" onClick={() => setExpenseModal('new')}>Add an Expense</button>}
+                <p>{isFuture ? 'No expenses yet — future month.' : `No expenses recorded in ${formatMonth(currentDate)}.`}</p>
+                {isCurrent && <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Fixed expenses will automatically appear here on your Cycle Start day.</p>}
               </div>
             ) : (
               <>
@@ -529,7 +722,7 @@ export default function ExpenseManagementPage() {
                         <CategoryPill cat={txn.category||'Other'} />
                         <div>
                           <div className="em-item-name">{txn.description || txn.category}</div>
-                          <div className="em-item-meta">{formatDate(txn.date)}</div>
+                          {/* Note: Date is hidden as per requirement */}
                         </div>
                       </div>
                       <div className="em-item-right">
@@ -551,47 +744,20 @@ export default function ExpenseManagementPage() {
         </div>
       </div>
 
-      {/* ── EXPENSE HISTORY (collapsible) ── */}
-      {expenseHistory.length > 0 && (
-        <div className="em-history-section">
-          <button className="em-history-toggle" onClick={() => setShowExpHistory(v => !v)}>
-            <div className="em-history-toggle-left">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              <span>Expense Addition History</span>
-              <span className="em-history-count">{transactions.filter(t=>t.type==='EXPENSE'||t.type==='DEBIT').length} entries across {expenseHistory.length} month{expenseHistory.length>1?'s':''}</span>
-            </div>
-            <span className="em-history-arrow">{showExpHistory ? <ChevronUp /> : <ChevronDown />}</span>
-          </button>
-
-          {showExpHistory && (
-            <div className="em-history-body">
-              {expenseHistory.map((group, gi) => (
-                <div key={gi} className="em-history-group">
-                  <div className="em-history-group-header">
-                    <span className="em-history-month">{group.label}</span>
-                    <span className="em-history-group-total">-{formatMoney(group.total)}</span>
-                  </div>
-                  {group.items
-                    .slice()
-                    .sort((a,b) => parseDate(b.date) - parseDate(a.date))
-                    .map(txn => (
-                      <div key={txn.id} className="em-history-item">
-                        <CategoryPill cat={txn.category||'Other'} />
-                        <span className="em-history-desc">{txn.description || txn.category}</span>
-                        <span className="em-history-date">{formatDate(txn.date)}</span>
-                        <span className="em-history-amount">-{formatMoney(txn.amount)}</span>
-                      </div>
-                    ))}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── MODALS ── */}
+      {reconciliationPreview && (
+        <ReconciliationModal 
+          previewData={reconciliationPreview} 
+          manualIncome={incomeForMonth} 
+          manualExpense={totalExpenses}
+          monthLabel={formatMonth(currentDate)}
+          onSave={handleSaveVerification} 
+          onClose={() => setReconciliationPreview(null)} 
+        />
+      )}
       {incomeModal  && <IncomeModal  existing={incomeModal==='new'?null:incomeModal}   onSave={handleSaveIncome}   onClose={() => setIncomeModal(null)}  />}
-      {expenseModal && <ExpenseModal existing={expenseModal==='new'?null:expenseModal} currentMonth={currentDate} onSave={handleSaveExpense} onClose={() => setExpenseModal(null)} />}
+      {fixedExpModal && <FixedExpenseModal existing={fixedExpModal==='new'?null:fixedExpModal} onSave={handleSaveFixedExpense} onClose={() => setFixedExpModal(null)} />}
+      {expenseModal && <ExpenseModal existing={expenseModal==='new'?null:expenseModal} onSave={handleSaveExpense} onClose={() => setExpenseModal(null)} />}
       {deleteConfirm && <ConfirmDelete label={deleteConfirm.label} onConfirm={confirmDelete} onClose={() => setDeleteConfirm(null)} />}
     </div>
   );

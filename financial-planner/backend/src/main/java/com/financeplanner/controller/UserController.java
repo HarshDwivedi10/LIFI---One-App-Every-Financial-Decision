@@ -2,6 +2,7 @@ package com.financeplanner.controller;
 
 import com.financeplanner.entity.User;
 import com.financeplanner.repository.UserRepository;
+import com.financeplanner.service.SavingsCalculationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,6 +16,7 @@ import java.util.Map;
 public class UserController {
 
     private final UserRepository userRepository;
+    private final SavingsCalculationService savingsCalculationService;
 
     @GetMapping("/settings")
     public ResponseEntity<Map<String, Object>> getSettings(@AuthenticationPrincipal User user) {
@@ -25,6 +27,8 @@ public class UserController {
         response.put("salaryDay", dbUser.getSalaryDay() != null ? dbUser.getSalaryDay() : 1);
         response.put("salaryTime", dbUser.getSalaryTime() != null ? dbUser.getSalaryTime() : "00:00");
         response.put("manualTotalSavings", dbUser.getManualTotalSavings() != null ? dbUser.getManualTotalSavings() : 0.0);
+        response.put("preExistingSavingsDate", dbUser.getPreExistingSavingsDate());
+        response.put("liveTotalSavings", savingsCalculationService.calculateLiveTotalSavings(dbUser));
         response.put("fundAllocationsJson", dbUser.getFundAllocationsJson() != null ? dbUser.getFundAllocationsJson() : "{}");
         return ResponseEntity.ok(response);
     }
@@ -43,6 +47,9 @@ public class UserController {
         if (payload.containsKey("manualTotalSavings")) {
             dbUser.setManualTotalSavings(Double.parseDouble(payload.get("manualTotalSavings").toString()));
         }
+        if (payload.containsKey("preExistingSavingsDate")) {
+            dbUser.setPreExistingSavingsDate(payload.get("preExistingSavingsDate").toString());
+        }
         if (payload.containsKey("fundAllocationsJson")) {
             dbUser.setFundAllocationsJson(payload.get("fundAllocationsJson").toString());
         }
@@ -53,6 +60,8 @@ public class UserController {
         response.put("salaryDay", dbUser.getSalaryDay() != null ? dbUser.getSalaryDay() : 1);
         response.put("salaryTime", dbUser.getSalaryTime() != null ? dbUser.getSalaryTime() : "00:00");
         response.put("manualTotalSavings", dbUser.getManualTotalSavings() != null ? dbUser.getManualTotalSavings() : 0.0);
+        response.put("preExistingSavingsDate", dbUser.getPreExistingSavingsDate());
+        response.put("liveTotalSavings", savingsCalculationService.calculateLiveTotalSavings(dbUser));
         response.put("fundAllocationsJson", dbUser.getFundAllocationsJson() != null ? dbUser.getFundAllocationsJson() : "{}");
         return ResponseEntity.ok(response);
     }
