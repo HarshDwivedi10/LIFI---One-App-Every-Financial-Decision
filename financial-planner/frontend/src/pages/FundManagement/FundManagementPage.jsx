@@ -5,9 +5,9 @@ import './FundManagementPage.css';
 import toast from 'react-hot-toast';
 
 const PROFILES = [
-  { id: 'CONSERVATIVE', label: 'Conservative', icon: 'shield', allocations: { 'LONG_TERM': 20, 'SHORT_TERM': 10, 'EMERGENCY': 15, 'WEALTH': 5 }, description: 'Lower risk, steady returns\nMore stable allocations' },
-  { id: 'MODERATE', label: 'Moderate', icon: 'scales', allocations: { 'LONG_TERM': 25, 'SHORT_TERM': 15, 'EMERGENCY': 15, 'WEALTH': 5 }, description: 'Balanced growth and stability\nOptimal mix for most investors' },
-  { id: 'AGGRESSIVE', label: 'Aggressive', icon: 'rocket', allocations: { 'LONG_TERM': 20, 'SHORT_TERM': 10, 'EMERGENCY': 10, 'WEALTH': 30 }, description: 'Higher growth potential\nHigher risk, higher returns' },
+  { id: 'CONSERVATIVE', label: 'Conservative', icon: 'shield', allocations: { 'RETIREMENT': 40, 'LONG_TERM': 20, 'SHORT_TERM': 10, 'EMERGENCY': 30, 'WEALTH': 0 }, description: 'Lower risk, steady returns\nMore stable allocations' },
+  { id: 'MODERATE', label: 'Moderate', icon: 'scales', allocations: { 'RETIREMENT': 30, 'LONG_TERM': 30, 'SHORT_TERM': 15, 'EMERGENCY': 15, 'WEALTH': 10 }, description: 'Balanced growth and stability\nOptimal mix for most investors' },
+  { id: 'AGGRESSIVE', label: 'Aggressive', icon: 'rocket', allocations: { 'RETIREMENT': 20, 'LONG_TERM': 25, 'SHORT_TERM': 15, 'EMERGENCY': 10, 'WEALTH': 30 }, description: 'Higher growth potential\nHigher risk, higher returns' },
   { id: 'CUSTOM', label: 'Custom', icon: 'sliders', allocations: {}, description: 'Create your own allocation\nFull control over your funds' }
 ];
 
@@ -23,7 +23,9 @@ export default function FundManagementPage() {
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(true);
-  const [totalSavings, setTotalSavings] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+  const [monthlyExpense, setMonthlyExpense] = useState(0);
+  const [expectedMonthlySavings, setExpectedMonthlySavings] = useState(0);
   const [savingsGrowth, setSavingsGrowth] = useState(0);
   const [editingSavings, setEditingSavings] = useState(false);
   const [editedSavingsValue, setEditedSavingsValue] = useState('');
@@ -43,6 +45,7 @@ export default function FundManagementPage() {
   }, []);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -80,11 +83,10 @@ export default function FundManagementPage() {
       const currentSavings = Math.max(0, currentMonthIncome - currentMonthExpenses);
       const prevSavings = Math.max(0, prevMonthIncome - prevMonthExpenses);
       
-      if (settings.manualTotalSavings !== undefined && settings.manualTotalSavings > 0) {
-        setTotalSavings(settings.manualTotalSavings);
-      } else {
-        setTotalSavings(currentSavings);
-      }
+      // Always rely dynamically on the fetched current month income
+      setMonthlyIncome(currentMonthIncome);
+      setMonthlyExpense(currentMonthExpenses);
+      setExpectedMonthlySavings(currentSavings);
       
       let growth = 0;
       if (prevSavings > 0) {
@@ -107,10 +109,10 @@ export default function FundManagementPage() {
       let savedAllocations = settings.fundAllocationsJson ? JSON.parse(settings.fundAllocationsJson) : null;
       if (savedAllocations) {
         setAllocations(savedAllocations.core || PROFILES.find(p => p.id === 'AGGRESSIVE').allocations);
-        setRetirementPercent(savedAllocations.retirement !== undefined ? savedAllocations.retirement : 40);
+        setRetirementPercent(savedAllocations.retirement !== undefined ? savedAllocations.retirement : 6);
       } else {
         setAllocations(PROFILES.find(p => p.id === 'AGGRESSIVE').allocations);
-        setRetirementPercent(40);
+        setRetirementPercent(6);
       }
 
     } catch (err) {
@@ -124,7 +126,7 @@ export default function FundManagementPage() {
   const handleSaveChanges = async () => {
     try {
       const payload = {
-        manualTotalSavings: totalSavings,
+        manualTotalSavings: 0, // Clear the override so it uses dynamic income
         fundAllocationsJson: JSON.stringify({ core: allocations, retirement: retirementPercent })
       };
       await toast.promise(api.put('/user/settings', payload), {
@@ -141,23 +143,56 @@ export default function FundManagementPage() {
   const handleProfileChange = (profileId) => {
     setSelectedProfile(profileId);
     if (profileId !== 'CUSTOM') {
-      setAllocations(PROFILES.find(p => p.id === profileId).allocations);
+      const profileAlloc = PROFILES.find(p => p.id === profileId).allocations;
+      
+      const expensePct = monthlyIncome > 0 ? (monthlyExpense / monthlyIncome) * 100 : 0;
+      const maxAllowed = Math.max(0, 100 - expensePct);
+      
+      const scaledAlloc = {};
+      for (const [k, v] of Object.entries(profileAlloc)) {
+        scaledAlloc[k] = parseFloat(((v / 100) * maxAllowed).toFixed(1));
+      }
+      
+      setRetirementPercent(scaledAlloc['RETIREMENT'] || 0);
+      delete scaledAlloc['RETIREMENT'];
+      setAllocations(scaledAlloc);
     }
+    setShowProfileModal(false);
   };
 
   const handleAllocationChange = (fundId, value) => {
     setSelectedProfile('CUSTOM');
+    let newVal = parseFloat(value) || 0;
+    
+    // Calculate total currently allocated to *other* funds
+    let currentOtherAlloc = 0;
     if (fundId === 'RETIREMENT') {
-      setRetirementPercent(parseFloat(value) || 0);
+      currentOtherAlloc = Object.values(allocations).reduce((sum, val) => sum + val, 0);
     } else {
-      setAllocations(prev => ({ ...prev, [fundId]: parseFloat(value) || 0 }));
+      currentOtherAlloc = Object.entries(allocations)
+        .filter(([k]) => k !== fundId)
+        .reduce((sum, [, val]) => sum + val, 0) + retirementPercent;
+    }
+    
+    // STRICTLY DO NOT ALLOW OVERALLOCATION
+    const expensePct = monthlyIncome > 0 ? (monthlyExpense / monthlyIncome) * 100 : 0;
+    const maxAllowed = Math.max(0, 100 - expensePct - currentOtherAlloc);
+    
+    if (newVal > maxAllowed) {
+      newVal = maxAllowed;
+    }
+
+    if (fundId === 'RETIREMENT') {
+      setRetirementPercent(newVal);
+    } else {
+      setAllocations(prev => ({ ...prev, [fundId]: newVal }));
     }
   };
 
   const handleAmountChange = (fundId, amountStr) => {
     setSelectedProfile('CUSTOM');
     const amount = parseFloat(amountStr) || 0;
-    const pct = (amount / totalSavings) * 100;
+    const pct = monthlyIncome > 0 ? (amount / monthlyIncome) * 100 : 0;
     if (fundId === 'RETIREMENT') {
       setRetirementPercent(pct);
     } else {
@@ -169,8 +204,17 @@ export default function FundManagementPage() {
 
   const totalOtherAlloc = Object.values(allocations).reduce((sum, val) => sum + val, 0);
   const totalAlloc = totalOtherAlloc + retirementPercent;
+  const currentExpensePct = monthlyIncome > 0 ? (monthlyExpense / monthlyIncome) * 100 : 0;
+  const unallocatedPct = Math.max(0, 100 - currentExpensePct - totalAlloc);
 
-  const calculateRupees = (pct) => (totalSavings * (pct / 100));
+  const calculateRupees = (pct) => (monthlyIncome * (pct / 100));
+
+  const totalAmountInFunds = FUNDS.reduce((sum, fund) => {
+    const val = fund.id === 'RETIREMENT' ? retirementPercent : (allocations[fund.id] || 0);
+    return sum + (preExistingAssets[fund.id] || 0) + calculateRupees(val);
+  }, 0);
+  const unallocatedFunds = Math.max(0, expectedMonthlySavings - calculateRupees(totalAlloc));
+  const totalSavingsDisplay = totalAmountInFunds + unallocatedFunds;
 
   const formatNumberToWords = (num) => {
     if (num >= 10000000) return (num / 10000000).toFixed(2).replace(/\.00$/, '') + ' Crores';
@@ -227,92 +271,25 @@ export default function FundManagementPage() {
   return (
     <div className="fund-management-container" style={{ display: 'flex', gap: '32px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
       
-      {/* Action Bar (Top Full Width, Always Visible) */}
-      <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', marginBottom: '-16px' }}>
-         {!isEditing ? (
-           <button className="fm-btn-primary" style={{ padding: '6px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '8px' }} onClick={() => setIsEditing(true)}>
-             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-             Edit
-           </button>
-         ) : (
-           <button className="fm-btn-primary" onClick={handleSaveChanges} style={{ padding: '6px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', background: '#818CF8', borderRadius: '8px' }}>
-             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-             Save
-           </button>
-         )}
-      </div>
-
-      {/* Profile Grid (Top Full Width) */}
-      {isEditing && (
-        <div className="fm-card" style={{ width: '100%', marginBottom: 0 }}>
-          <div className="fm-profile-header">
-             <div>
-               <h2 className="fm-title" style={{fontSize:'18px'}}>Select Investment Profile</h2>
-               <p className="fm-subtitle">Choose a profile that matches your risk appetite.</p>
-             </div>
-             <div className="fm-profile-badge">
-               <span style={{color: '#8B8C9A', fontWeight: 400}}>Current Profile</span> &nbsp;&nbsp;&nbsp; {PROFILES.find(p=>p.id===selectedProfile)?.label || 'Custom'}
-             </div>
-          </div>
-          
-          <div className="fm-profile-grid">
-            {PROFILES.map(p => (
-              <div 
-                key={p.id}
-                onClick={() => handleProfileChange(p.id)}
-                className={`fm-profile-card ${selectedProfile === p.id ? 'active' : ''}`}
-              >
-                {p.id === 'MODERATE' && <div className="fm-rec-badge">Recommended</div>}
-                {selectedProfile === p.id && (
-                  <div className="fm-check-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                )}
-                <div className="fm-profile-icon">{renderIcon(p.icon)}</div>
-                <div className="fm-profile-title">{p.label}</div>
-                <div className="fm-profile-desc">
-                  {p.description.split('\n').map((line, i) => <div key={i}>{line}</div>)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* LEFT COLUMN: Total Savings & Summary */}
       <div style={{ flex: '1 1 300px', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div className="fm-card" style={{ padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+         <div className="fm-card" style={{ padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
            <div>
-             <div className="fm-total-savings" style={{ marginBottom: '8px' }}>Total Savings to Distribute</div>
+             {isEditing && (
+               <button className="fm-btn-outline" onClick={() => setShowProfileModal(true)} style={{ marginBottom: '24px', width: '100%', borderColor: '#818CF8', color: '#818CF8', padding: '10px', borderRadius: '8px', fontSize: '14px', fontWeight: 600 }}>
+                 Select Investment Profile
+               </button>
+             )}
+             <div className="fm-total-savings" style={{ marginBottom: '8px' }}>Total Savings</div>
              <div className="fm-savings-amount" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-               {editingSavings ? (
-                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                   <span style={{ fontSize: '24px', color: '#8B8C9A' }}>₹</span>
-                   <input 
-                     type="number" 
-                     value={editedSavingsValue}
-                     onChange={(e) => setEditedSavingsValue(e.target.value)}
-                     autoFocus
-                     style={{ background: 'transparent', border: 'none', borderBottom: '2px solid #818CF8', color: '#fff', fontSize: '32px', fontWeight: 800, width: '150px', outline: 'none' }}
-                   />
-                   <button className="fm-btn-primary" style={{ padding: '8px 16px', fontSize: '13px', marginLeft: '8px' }} onClick={() => {
-                     if(editedSavingsValue) setTotalSavings(parseFloat(editedSavingsValue));
-                     setEditingSavings(false);
-                   }}>Save</button>
-                 </div>
-               ) : (
-                 <>
-                   <span style={{ fontSize: '36px' }}>₹{new Intl.NumberFormat('en-IN').format(totalSavings)}</span>
-                   <span style={{ fontSize: '16px', color: '#8B8C9A', marginLeft: '8px', fontWeight: 500 }}>({formatNumberToWords(totalSavings)})</span>
-                   {isEditing && (
-                      <button onClick={() => { setEditedSavingsValue(totalSavings.toString()); setEditingSavings(true); }} style={{ background: 'none', border: 'none', color: '#8B8C9A', cursor: 'pointer', padding: 0 }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                      </button>
-                   )}
-                 </>
-               )}
+               <span style={{ fontSize: '36px' }}>₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(totalSavingsDisplay)}</span>
+               <span style={{ fontSize: '16px', color: '#8B8C9A', marginLeft: '8px', fontWeight: 500 }}>({formatNumberToWords(totalSavingsDisplay)})</span>
              </div>
-             <div style={{ fontSize: '13px', color: '#8B8C9A', marginTop: '8px' }}>This amount will be distributed across your funds.</div>
+             <div style={{ fontSize: '13px', color: '#8B8C9A', marginTop: '12px', display: 'flex', gap: '16px' }}>
+               <div>Monthly Income: <strong style={{color: '#fff'}}>₹{new Intl.NumberFormat('en-IN').format(monthlyIncome)}</strong></div>
+               <div style={{ color: '#232533' }}>|</div>
+               <div>Expected Savings: <strong style={{color: '#fff'}}>₹{new Intl.NumberFormat('en-IN').format(expectedMonthlySavings)}</strong></div>
+             </div>
            </div>
            
            <div className="fm-legend-list">
@@ -336,13 +313,16 @@ export default function FundManagementPage() {
            <div style={{ background: '#1A1D2D', borderRadius: '12px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#8B8C9A', fontSize: '14px' }}>
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-               {totalAlloc === 100 ? "All savings managed in funds" : 
-                totalAlloc < 100 ? `₹${new Intl.NumberFormat('en-IN').format(calculateRupees(100 - totalAlloc))} (${formatNumberToWords(calculateRupees(100 - totalAlloc))}) unallocated` : 
-                "Overallocation"}
+               {(() => {
+                 const allocatedRs = calculateRupees(totalAlloc);
+                 if (allocatedRs === expectedMonthlySavings) return "All savings perfectly allocated";
+                 if (allocatedRs < expectedMonthlySavings) return `₹${new Intl.NumberFormat('en-IN').format(expectedMonthlySavings - allocatedRs)} savings unallocated`;
+                 return `Overallocation: Exceeds expected savings by ₹${new Intl.NumberFormat('en-IN').format(allocatedRs - expectedMonthlySavings)}`;
+               })()}
              </div>
-             <strong style={{ color: totalAlloc === 100 ? '#10B981' : totalAlloc > 100 ? '#EF4444' : '#F59E0B', fontSize: '18px' }}>
-               {totalAlloc.toFixed(1)}%
-             </strong>
+              <strong style={{ color: '#10B981', fontSize: '18px' }}>
+                {unallocatedPct.toFixed(1)}%
+              </strong>
            </div>
         </div>
       </div>
@@ -357,14 +337,28 @@ export default function FundManagementPage() {
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                 {!isEditing ? (
+                   <button className="fm-btn-primary" style={{ padding: '6px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '8px' }} onClick={() => setIsEditing(true)}>
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                     Edit
+                   </button>
+                 ) : (
+                   <button className="fm-btn-primary" onClick={handleSaveChanges} style={{ padding: '6px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', background: '#818CF8', borderRadius: '8px' }}>
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                     Save
+                   </button>
+                 )}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                   <span style={{ fontSize: '12px', color: '#8B8C9A' }}>
-                    {totalAlloc === 100 ? "All savings managed in funds" : 
-                     totalAlloc < 100 ? `₹${new Intl.NumberFormat('en-IN').format(calculateRupees(100 - totalAlloc))} (${formatNumberToWords(calculateRupees(100 - totalAlloc))}) left` : 
-                     "Overallocation"}
+                    {(() => {
+                      const allocatedRs = calculateRupees(totalAlloc);
+                      if (allocatedRs === expectedMonthlySavings) return "Savings fully allocated";
+                      if (allocatedRs < expectedMonthlySavings) return `₹${new Intl.NumberFormat('en-IN').format(expectedMonthlySavings - allocatedRs)} left to allocate`;
+                      return "Overallocation warning";
+                    })()}
                   </span>
-                  <strong style={{ color: totalAlloc === 100 ? '#10B981' : totalAlloc > 100 ? '#EF4444' : '#F59E0B', fontSize: '18px' }}>
-                    {totalAlloc.toFixed(1)}%
+                  <strong style={{ color: '#10B981', fontSize: '18px' }}>
+                    {unallocatedPct.toFixed(1)}%
                   </strong>
                 </div>
               </div>
@@ -376,11 +370,11 @@ export default function FundManagementPage() {
                 <div style={{ flex: '0 0 180px', paddingRight: '16px' }}>
                   <div style={{ fontSize: '12px', color: '#fff', fontWeight: 600 }}>Fund Details</div>
                 </div>
-                <div style={{ flex: '0 0 100px', display: 'flex', justifyContent: 'center' }}>
-                  <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3 }}>Set Monthly<br/>Percentage</div>
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', margin: '0 16px' }}>
+                  <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3 }}>% of<br/>Income</div>
                 </div>
-                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', margin: '0 24px' }}>
-                  <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3 }}>Set Monthly<br/>Amount</div>
+                <div style={{ flex: '0 0 120px', display: 'flex', justifyContent: 'center', margin: '0 16px' }}>
+                  <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'center', lineHeight: 1.3 }}>Per Month Allocation<br/>to this Fund</div>
                 </div>
                 <div style={{ minWidth: '100px', display: 'flex', justifyContent: 'flex-end' }}>
                   <div style={{ fontSize: '10px', color: '#8B8C9A', textAlign: 'right', lineHeight: 1.3 }}>Total Amount<br/>in Fund</div>
@@ -410,51 +404,57 @@ export default function FundManagementPage() {
                      </div>
                    ) : (
                      <>
-                       <div style={{ flex: '0 0 100px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                         <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{val.toFixed(1)}%</div>
-                       </div>
-                       
-                       <div className="fm-slider-container" style={{ margin: '0 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '8px' }}>
-                           <span style={{ color: '#8B8C9A', fontSize: '14px', marginRight: '4px' }}>₹</span>
+                        <div className="fm-slider-container" style={{ flex: 1, margin: '0 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
                            {isEditing ? (
-                             <input 
-                               type="number"
-                               value={Math.round(calculateRupees(val))}
-                               onChange={(e) => handleAmountChange(fund.id, e.target.value)}
-                               style={{
-                                 background: 'transparent',
-                                 border: 'none',
-                                 borderBottom: `2px solid ${fund.color}`,
-                                 color: '#fff',
-                                 fontSize: '15px',
-                                 fontWeight: 600,
-                                 width: '80px',
-                                 textAlign: 'center',
-                                 outline: 'none',
-                                 padding: '2px 0'
-                               }}
-                             />
+                             <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                               <input 
+                                 type="number"
+                                 value={val}
+                                 step="0.1"
+                                 onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
+                                 style={{
+                                   background: 'transparent',
+                                   border: 'none',
+                                   borderBottom: `2px solid ${fund.color}`,
+                                   color: '#fff',
+                                   fontSize: '16px',
+                                   fontWeight: 700,
+                                   width: '56px',
+                                   textAlign: 'center',
+                                   outline: 'none',
+                                   padding: '2px 0'
+                                 }}
+                               />
+                               <span style={{ color: '#8B8C9A', fontSize: '14px', marginLeft: '4px' }}>%</span>
+                             </div>
                            ) : (
-                             <span style={{ color: '#fff', fontSize: '15px', fontWeight: 600 }}>
-                               {new Intl.NumberFormat('en-IN').format(Math.round(calculateRupees(val)))}
-                             </span>
+                             <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700, marginBottom: '8px' }}>{val.toFixed(1)}%</div>
                            )}
+                           
+                           <input 
+                             type="range" 
+                             min="0" max="100" step="0.1" 
+                             value={val}
+                             onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
+                             disabled={!isEditing}
+                             style={{ 
+                               width: '100%',
+                               background: `linear-gradient(to right, ${fund.color} ${val}%, #232533 ${val}%)`,
+                               '--thumb-color': fund.color,
+                               opacity: isEditing ? 1 : 0.6,
+                               cursor: isEditing ? 'pointer' : 'not-allowed'
+                             }}
+                           />
+                         </div>
+                       
+                       <div style={{ flex: '0 0 120px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
+                         <div style={{ display: 'flex', alignItems: 'center' }}>
+                           <span style={{ color: '#8B8C9A', fontSize: '14px', marginRight: '4px' }}>₹</span>
+                           <span style={{ color: '#fff', fontSize: '15px', fontWeight: 600 }}>
+                             {new Intl.NumberFormat('en-IN').format(Math.round(calculateRupees(val)))}
+                           </span>
                            <span style={{ color: '#8B8C9A', fontSize: '12px', marginLeft: '6px' }}>/ mo</span>
                          </div>
-                         <input 
-                           type="range" 
-                           min="0" max="100" step="0.1" 
-                           value={val}
-                           onChange={(e) => handleAllocationChange(fund.id, e.target.value)}
-                           disabled={!isEditing}
-                           style={{ 
-                             background: `linear-gradient(to right, ${fund.color} ${val}%, #232533 ${val}%)`,
-                             '--thumb-color': fund.color,
-                             opacity: isEditing ? 1 : 0.6,
-                             cursor: isEditing ? 'pointer' : 'not-allowed'
-                           }}
-                         />
                        </div>
                        
                        <div className="fm-fund-amount" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '100px' }}>
@@ -468,11 +468,111 @@ export default function FundManagementPage() {
                  </div>
                );
              })}
-           </div>
-         </div>
+
+             {/* Non-editable Monthly Expense Row */}
+             <div className="fm-fund-row" style={{ alignItems: 'center', background: 'rgba(239, 68, 68, 0.05)', marginTop: '8px' }}>
+               <div className="fm-fund-icon-box" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' }}>
+                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+               </div>
+               <div style={{ flex: '0 0 180px', paddingRight: '16px' }}>
+                 <div className="fm-fund-name" style={{ fontSize: '14px', color: '#EF4444' }}>Monthly Expenses</div>
+                 <div style={{ fontSize: '11px', color: '#8B8C9A', marginTop: '4px', lineHeight: 1.4 }}>Fetched from transactions</div>
+               </div>
+               <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
+                 <div style={{ color: '#EF4444', fontSize: '16px', fontWeight: 700 }}>
+                   {monthlyIncome > 0 ? ((monthlyExpense / monthlyIncome) * 100).toFixed(1) : 0}%
+                 </div>
+               </div>
+               <div style={{ flex: '0 0 120px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
+                 <div style={{ display: 'flex', alignItems: 'center' }}>
+                   <span style={{ color: '#8B8C9A', fontSize: '14px', marginRight: '4px' }}>₹</span>
+                   <span style={{ color: '#EF4444', fontSize: '15px', fontWeight: 600 }}>
+                     {new Intl.NumberFormat('en-IN').format(Math.round(monthlyExpense))}
+                   </span>
+                   <span style={{ color: '#8B8C9A', fontSize: '12px', marginLeft: '6px' }}>/ mo</span>
+                 </div>
+               </div>
+                <div className="fm-fund-amount" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '100px' }}>
+                  <span style={{ color: '#8B8C9A', fontWeight: 500, fontSize: '13px' }}>N/A</span>
+                </div>
+              </div>
+
+              {/* Total Row */}
+              <div className="fm-fund-row" style={{ alignItems: 'center', borderTop: '2px solid #232533', marginTop: '16px', paddingTop: '16px' }}>
+                <div style={{ flex: '0 0 48px', paddingRight: '16px' }}></div>
+                <div style={{ flex: '0 0 180px', paddingRight: '16px' }}>
+                  <div className="fm-fund-name" style={{ fontSize: '16px', color: '#fff', fontWeight: 700 }}>Total</div>
+                </div>
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
+                  <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>
+                    {(totalAlloc + (monthlyIncome > 0 ? (monthlyExpense / monthlyIncome) * 100 : 0)).toFixed(1)}%
+                  </div>
+                </div>
+                <div style={{ flex: '0 0 120px', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ color: '#8B8C9A', fontSize: '14px', marginRight: '4px' }}>₹</span>
+                    <span style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>
+                      {new Intl.NumberFormat('en-IN').format(Math.round(calculateRupees(totalAlloc) + monthlyExpense))}
+                    </span>
+                    <span style={{ color: '#8B8C9A', fontSize: '12px', marginLeft: '6px' }}>/ mo</span>
+                  </div>
+                </div>
+                <div className="fm-fund-amount" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '100px' }}>
+                  <span style={{ color: '#10B981', fontWeight: 700, fontSize: '16px' }}>
+                    ₹{new Intl.NumberFormat('en-IN').format(Math.round(totalSavingsDisplay))}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Savings</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
 
       </div>
 
+      {showProfileModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div className="fm-card animate-scale-in" style={{ width: '90%', maxWidth: '900px', margin: 0, padding: '32px', position: 'relative' }}>
+            <button 
+              onClick={() => setShowProfileModal(false)}
+              style={{ position: 'absolute', top: '24px', right: '24px', background: 'none', border: 'none', color: '#8B8C9A', cursor: 'pointer' }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            <div className="fm-profile-header">
+               <div>
+                 <h2 className="fm-title" style={{fontSize:'22px'}}>Select Investment Profile</h2>
+                 <p className="fm-subtitle">Choose a profile that matches your risk appetite.</p>
+               </div>
+               <div className="fm-profile-badge">
+                 <span style={{color: '#8B8C9A', fontWeight: 400}}>Current Profile</span> &nbsp;&nbsp;&nbsp; {PROFILES.find(p=>p.id===selectedProfile)?.label || 'Custom'}
+               </div>
+            </div>
+            
+            <div className="fm-profile-grid">
+              {PROFILES.map(p => (
+                <div 
+                  key={p.id}
+                  onClick={() => handleProfileChange(p.id)}
+                  className={`fm-profile-card ${selectedProfile === p.id ? 'active' : ''}`}
+                >
+                  {p.id === 'MODERATE' && <div className="fm-rec-badge">Recommended</div>}
+                  {selectedProfile === p.id && (
+                    <div className="fm-check-badge">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                  )}
+                  <div className="fm-profile-icon">{renderIcon(p.icon)}</div>
+                  <div className="fm-profile-title">{p.label}</div>
+                  <div className="fm-profile-desc">
+                    {p.description.split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

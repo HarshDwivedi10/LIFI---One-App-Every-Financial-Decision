@@ -60,7 +60,7 @@ export default function GoalManagementPage() {
 
       // Pre-existing balances
       const assets = assetsRes.data;
-      const getBalance = (label) => assets.filter(a => a.type === label || a.type === label.replace(' Corpus', '')).reduce((sum, a) => sum + parseFloat(a.value || 0), 0);
+      const getBalance = (id) => assets.filter(a => a.assetType === id || a.type === id).reduce((sum, a) => sum + parseFloat(a.currentValue || a.value || 0), 0);
       
       // Load allocations from unified localStorage
       let allFundsStr = localStorage.getItem('all_funds_allocations');
@@ -93,7 +93,7 @@ export default function GoalManagementPage() {
 
       const fundsWithBalances = allFunds.map(f => ({
         ...f,
-        balance: getBalance(f.name)
+        balance: getBalance(f.id)
       }));
       
       const corpusMap = {};

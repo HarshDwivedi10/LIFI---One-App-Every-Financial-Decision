@@ -102,9 +102,15 @@ function CoachRow({ coach }) {
           </div>
         </div>
       </td>
-      <td style={{ color: '#94a3b8' }}>{coach.areaOfExpertise || '–'}</td>
-      <td style={{ color: '#94a3b8' }}>{coach.qualification || '–'}</td>
-      <td style={{ color: '#94a3b8' }}>{coach.yearsOfExperience != null ? `${coach.yearsOfExperience} yrs` : '–'}</td>
+      <td>
+        {coach.resumeBase64 ? (
+          <a href={coach.resumeBase64} download={`${coach.name}_Resume`} target="_blank" rel="noreferrer" style={{color: '#a78bfa', textDecoration: 'none', fontWeight: 600}}>
+            📄 View Resume
+          </a>
+        ) : (
+          <span style={{ color: '#94a3b8' }}>No Resume</span>
+        )}
+      </td>
       <td><StatusBadge status={coach.status} /></td>
       <td style={{ color: '#475569' }}>{coach.createdAt}</td>
     </tr>
@@ -355,9 +361,7 @@ export default function AdminDashboard() {
                 <thead>
                   <tr>
                     <th>Coach</th>
-                    <th>Expertise</th>
-                    <th>Qualification</th>
-                    <th>Exp.</th>
+                    <th>Resume</th>
                     <th>Status</th>
                     <th>Applied</th>
                   </tr>
@@ -379,9 +383,7 @@ export default function AdminDashboard() {
                 <thead>
                   <tr>
                     <th>Coach</th>
-                    <th>Area of Expertise</th>
-                    <th>Qualification</th>
-                    <th>Experience</th>
+                    <th>Resume</th>
                     <th>Status</th>
                     <th>Joined</th>
                   </tr>

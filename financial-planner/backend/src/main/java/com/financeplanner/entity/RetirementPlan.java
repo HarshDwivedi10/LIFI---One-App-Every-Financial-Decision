@@ -33,6 +33,8 @@ public class RetirementPlan {
     private Double inflationRate;
     private Double expectedReturn;
     private Double withdrawalRate;
+    private Double lifestyleRatio;
+    private Double salaryIncreaseRate;
 
     // Mode-specific inputs
     private Double currentMonthlyExpense;

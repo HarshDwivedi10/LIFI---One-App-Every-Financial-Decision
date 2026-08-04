@@ -20,12 +20,5 @@ public class RegisterRequest {
     private String role; // "USER" or "COACH"
 
     // Coach specific fields
-    private String qualification;
-    private String highestEducation;
-    private Integer yearsOfExperience;
-    private String certifications;
-    private String areaOfExpertise;
-    private String phoneNumber;
-    private String address;
-    private String bio;
+    private String resumeBase64;
 }

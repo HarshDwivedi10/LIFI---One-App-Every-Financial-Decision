@@ -143,48 +143,27 @@ export default function FinancialSummary({ incomeData, transactions, assets, onB
           </div>
         </div>
 
-        {/* Detailed Breakdown */}
-        <div className="summary-grid-2">
-          {/* Assets & Liabilities */}
-          <div className="summary-card">
-            <div className="summary-card-header">
-              <h3>Total Assets</h3>
-            </div>
-            <div className="summary-detail-row">
-              <span>Total Assets</span>
-              <span className="val-positive">{formatCurrencyFull(summary.totalAssets)}</span>
-            </div>
-            <div className="summary-divider" />
-            <div className="summary-detail-row summary-total-row">
-              <span>Net Worth</span>
-              <span className="val-positive">
-                {formatCurrencyFull(summary.netWorth)}
-              </span>
-            </div>
+        {/* Income Breakdown */}
+        <div className="summary-card">
+          <div className="summary-card-header">
+            <h3>Income Breakdown</h3>
           </div>
-
-          {/* Income Breakdown */}
-          <div className="summary-card">
-            <div className="summary-card-header">
-              <h3>Income Breakdown</h3>
+          <div className="summary-detail-row">
+            <span>Monthly Salary</span>
+            <span className="val-positive">{formatCurrency(parseFloat(incomeData.monthlySalary) || 0)}</span>
+          </div>
+          {incomeData.otherSources.map((s) => (
+            <div key={s.id} className="summary-detail-row">
+              <span>{s.type}{s.description ? ` · ${s.description}` : ''}</span>
+              <span className="val-positive">{formatCurrency(parseFloat(s.amount) || 0)}</span>
             </div>
-            <div className="summary-detail-row">
-              <span>Monthly Salary</span>
-              <span className="val-positive">{formatCurrency(parseFloat(incomeData.monthlySalary) || 0)}</span>
-            </div>
-            {incomeData.otherSources.map((s) => (
-              <div key={s.id} className="summary-detail-row">
-                <span>{s.type}{s.description ? ` · ${s.description}` : ''}</span>
-                <span className="val-positive">{formatCurrency(parseFloat(s.amount) || 0)}</span>
-              </div>
-            ))}
-            <div className="summary-divider" />
-            <div className="summary-detail-row summary-total-row">
-              <span>Available Savings</span>
-              <span className={summary.availableSavings >= 0 ? 'val-positive' : 'val-negative'}>
-                {formatCurrency(summary.availableSavings)}
-              </span>
-            </div>
+          ))}
+          <div className="summary-divider" />
+          <div className="summary-detail-row summary-total-row">
+            <span>Available Savings</span>
+            <span className={summary.availableSavings >= 0 ? 'val-positive' : 'val-negative'}>
+              {formatCurrency(summary.availableSavings)}
+            </span>
           </div>
         </div>
 

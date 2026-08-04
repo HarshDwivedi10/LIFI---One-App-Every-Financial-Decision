@@ -73,9 +73,7 @@ public class AdminDashboardDTO {
         private String name;
         private String email;
         private String status;
-        private String areaOfExpertise;
-        private String qualification;
-        private Integer yearsOfExperience;
+        private String resumeBase64;
         private String createdAt;
     }
 }

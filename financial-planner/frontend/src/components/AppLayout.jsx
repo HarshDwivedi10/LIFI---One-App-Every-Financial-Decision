@@ -22,6 +22,9 @@ const NAV_ITEMS = [
   { path: '/goal-management', label: 'Goal Management', icon: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
   ) },
+  { path: '/expert-connect', label: 'Financial Expert', icon: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  ) },
 ];
 
 export default function AppLayout() {
@@ -98,54 +101,6 @@ export default function AppLayout() {
         </nav>
 
         <div className="topbar-user">
-          {userCoachInfo?.hasCoach && (
-            <div className="user-coach-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '1rem' }}>
-              <div className="user-coach" style={{ padding: '0.3rem 0.8rem', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '20px', fontSize: '0.85rem', color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span title="Assigned Coach">🎓 Coach: {userCoachInfo.coachName || user?.assignedCoachName}</span>
-              </div>
-              <button
-                className="chat-with-coach-btn"
-                onClick={handleOpenChat}
-                style={{
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '0.35rem 0.85rem',
-                  borderRadius: '20px',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  position: 'relative'
-                }}
-              >
-                💬 Chat
-                {unreadCount > 0 && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '-6px',
-                    right: '-6px',
-                    background: '#ef4444',
-                    color: 'white',
-                    borderRadius: '50%',
-                    minWidth: '18px',
-                    height: '18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.65rem',
-                    fontWeight: 'bold',
-                    padding: '0 4px'
-                  }}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-              </button>
-            </div>
-          )}
-          
           {/* Notifications Bell */}
           <div style={{ position: 'relative' }}>
             <button 
@@ -261,6 +216,56 @@ export default function AppLayout() {
       <main className="app-main-content">
         <Outlet />
       </main>
+
+      {/* Floating Chat Button */}
+      {userCoachInfo?.hasCoach && (
+        <button
+          className="floating-chat-btn"
+          onClick={handleOpenChat}
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+            color: '#fff',
+            border: 'none',
+            boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 999,
+            transition: 'transform 0.2s',
+          }}
+          onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
+          onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          {unreadCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '-2px',
+              right: '-2px',
+              background: '#ef4444',
+              color: 'white',
+              borderRadius: '50%',
+              minWidth: '22px',
+              height: '22px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              border: '2px solid #0F1015'
+            }}>
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Chat with Coach Modal Overlay */}
       {showChatModal && coachPartner && (

@@ -6,6 +6,7 @@ import com.financeplanner.entity.Asset;
 import com.financeplanner.entity.Transaction;
 import com.financeplanner.entity.User;
 import com.financeplanner.repository.AssetRepository;
+import com.financeplanner.repository.NotificationRepository;
 import com.financeplanner.repository.TransactionRepository;
 import com.financeplanner.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,19 +26,42 @@ public class AutomatedSavingsScheduler {
     private final UserRepository userRepository;
     private final TransactionRepository transactionRepository;
     private final AssetRepository assetRepository;
+    private final NotificationRepository notificationRepository;
     private final ObjectMapper objectMapper;
 
-    // Run every day at 1:00 AM server time
-    @Scheduled(cron = "0 0 1 * * ?")
+    // Run every minute to support exact time precision
+    @Scheduled(cron = "0 * * * * ?")
     @Transactional
     public void executeAutomatedSavings() {
-        log.info("Starting daily automated savings check...");
+        log.info("Starting automated savings check...");
         List<User> users = userRepository.findAll();
-        LocalDate today = LocalDate.now();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
 
         for (User user : users) {
             try {
-                if (user.getSalaryDay() != null && today.getDayOfMonth() >= user.getSalaryDay()) {
+                int targetHour = 0;
+                int targetMinute = 0;
+                if (user.getSalaryTime() != null && !user.getSalaryTime().isEmpty()) {
+                    try {
+                        String[] timeParts = user.getSalaryTime().split(":");
+                        targetHour = Integer.parseInt(timeParts[0]);
+                        targetMinute = Integer.parseInt(timeParts[1]);
+                    } catch (Exception e) {}
+                }
+                
+                boolean isPastTime = false;
+                if (user.getSalaryDay() != null) {
+                    if (today.getDayOfMonth() > user.getSalaryDay()) {
+                        isPastTime = true;
+                    } else if (today.getDayOfMonth() == user.getSalaryDay()) {
+                        if (now.getHour() > targetHour || (now.getHour() == targetHour && now.getMinute() >= targetMinute)) {
+                            isPastTime = true;
+                        }
+                    }
+                }
+                
+                if (isPastTime) {
                     // Check if already processed this month
                     // For this mockup, we'll assume it processes once per month.
                     // We need a way to track last processed date. Since we didn't add it to User,
@@ -69,18 +93,20 @@ public class AutomatedSavingsScheduler {
                             .mapToDouble(Transaction::getAmount)
                             .sum();
 
-                    // Include base salary if it exists in Income sources (we don't have direct access here easily without IncomeRepository, assuming transactions reflect it)
-                    // For this mockup, let's just use a fixed 10000 or derive it.
-                    // Actually, let's just distribute what they have in manualTotalSavings if it's > 0, otherwise skip.
-                    // Wait, the user wants to ADD the savings.
+                    // The user's manual base income (repurposed from manualTotalSavings) or actual tracked income.
+                    double baseIncomeForDistribution = (user.getManualTotalSavings() != null && user.getManualTotalSavings() > 0) 
+                            ? user.getManualTotalSavings() 
+                            : currentMonthIncome;
+                    
                     double projectedSavings = currentMonthIncome - currentMonthExpenses;
                     
-                    if (projectedSavings > 0) {
-                        log.info("Applying automated savings for user {}: {}", user.getEmail(), projectedSavings);
+                    // We only distribute if they actually have projected savings, or maybe they just want the disciplined approach.
+                    // The user wants: "har mahine itni amount on the salary day will be added to this fund"
+                    // If they have positive income, we execute the distribution.
+                    if (baseIncomeForDistribution > 0) {
+                        log.info("Applying automated savings for user {}: Base Income = {}", user.getEmail(), baseIncomeForDistribution);
                         
-                        // Add to manualTotalSavings
-                        double newTotal = (user.getManualTotalSavings() != null ? user.getManualTotalSavings() : 0.0) + projectedSavings;
-                        user.setManualTotalSavings(newTotal);
+                        // We do NOT add projectedSavings to manualTotalSavings anymore since it now represents Monthly Income.
                         
                         // Distribute to funds based on JSON
                         if (user.getFundAllocationsJson() != null && !user.getFundAllocationsJson().isEmpty() && !user.getFundAllocationsJson().equals("{}")) {
@@ -94,7 +120,7 @@ public class AutomatedSavingsScheduler {
                             if (retirementPct > 0) {
                                 Asset ret = assets.stream().filter(a -> a.getAssetType().equals("RETIREMENT")).findFirst().orElse(null);
                                 if (ret != null) {
-                                    ret.setCurrentValue(ret.getCurrentValue() + (projectedSavings * (retirementPct / 100.0)));
+                                    ret.setCurrentValue(ret.getCurrentValue() + (baseIncomeForDistribution * (retirementPct / 100.0)));
                                     assetRepository.save(ret);
                                 }
                             }
@@ -107,7 +133,7 @@ public class AutomatedSavingsScheduler {
                                     if (pct > 0) {
                                         Asset fund = assets.stream().filter(a -> a.getAssetType().equals(fundId)).findFirst().orElse(null);
                                         if (fund != null) {
-                                            fund.setCurrentValue(fund.getCurrentValue() + (projectedSavings * (pct / 100.0)));
+                                            fund.setCurrentValue(fund.getCurrentValue() + (baseIncomeForDistribution * (pct / 100.0)));
                                             assetRepository.save(fund);
                                         }
                                     }
@@ -118,14 +144,35 @@ public class AutomatedSavingsScheduler {
                         userRepository.save(user);
 
                         // Record the transaction to prevent duplicate processing
+                        // We will record the total amount saved as a transaction
+                        double totalSaved = 0;
+                        if (user.getFundAllocationsJson() != null && !user.getFundAllocationsJson().isEmpty() && !user.getFundAllocationsJson().equals("{}")) {
+                            JsonNode json = objectMapper.readTree(user.getFundAllocationsJson());
+                            JsonNode core = json.get("core");
+                            double retirementPct = json.has("retirement") ? json.get("retirement").asDouble() : 0;
+                            double corePct = 0;
+                            if (core != null) {
+                                for (JsonNode node : core) {
+                                    corePct += node.asDouble();
+                                }
+                            }
+                            totalSaved = baseIncomeForDistribution * ((retirementPct + corePct) / 100.0);
+                        }
+                        
                         Transaction record = new Transaction();
                         record.setUser(user);
                         record.setType(Transaction.TransactionType.CREDIT);
-                        record.setAmount(projectedSavings);
+                        record.setAmount(totalSaved > 0 ? totalSaved : projectedSavings);
                         record.setCategory("Savings");
                         record.setDescription("Automated Savings Deposit");
                         record.setDate(today);
                         transactionRepository.save(record);
+
+                        com.financeplanner.entity.Notification notification = new com.financeplanner.entity.Notification();
+                        notification.setUserId(user.getId());
+                        notification.setType("STATEMENT_VERIFICATION");
+                        notification.setContent("Your new savings cycle has started. Please verify last month's exact savings by uploading your bank statement in the Expense Management dashboard.");
+                        notificationRepository.save(notification);
                     }
 
                 }

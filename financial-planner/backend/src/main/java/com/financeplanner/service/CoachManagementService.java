@@ -59,8 +59,7 @@ public class CoachManagementService {
                         .email(u.getEmail())
                         .status(u.getStatus() != null ? u.getStatus().name() : "ACTIVE")
                         .createdAt(u.getCreatedAt() != null ? u.getCreatedAt().format(DATE_FMT) : "-")
-                        .areaOfExpertise("General Coaching")
-                        .qualification("Financial Coach")
+                        .resumeBase64(null)
                         .build());
             }
         }
@@ -147,14 +146,7 @@ public class CoachManagementService {
                 .status(u.getStatus() != null ? u.getStatus().name() : "PENDING")
                 .createdAt(u.getCreatedAt() != null ? u.getCreatedAt().format(DATE_FMT) : "-")
                 .profileId(cp.getId())
-                .qualification(cp.getQualification())
-                .highestEducation(cp.getHighestEducation())
-                .yearsOfExperience(cp.getYearsOfExperience())
-                .certifications(cp.getCertifications())
-                .areaOfExpertise(cp.getAreaOfExpertise())
-                .phoneNumber(cp.getPhoneNumber())
-                .address(cp.getAddress())
-                .bio(cp.getBio())
+                .resumeBase64(cp.getResumeBase64())
                 .build();
     }
 }

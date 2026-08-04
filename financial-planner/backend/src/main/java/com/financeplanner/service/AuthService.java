@@ -48,14 +48,7 @@ public class AuthService {
         if (isCoach) {
             CoachProfile coachProfile = CoachProfile.builder()
                     .user(user)
-                    .qualification(request.getQualification())
-                    .highestEducation(request.getHighestEducation())
-                    .yearsOfExperience(request.getYearsOfExperience())
-                    .certifications(request.getCertifications())
-                    .areaOfExpertise(request.getAreaOfExpertise())
-                    .phoneNumber(request.getPhoneNumber())
-                    .address(request.getAddress())
-                    .bio(request.getBio())
+                    .resumeBase64(request.getResumeBase64())
                     .build();
             coachProfileRepository.save(coachProfile);
             return Map.of("message", "Registration successful, pending admin approval");

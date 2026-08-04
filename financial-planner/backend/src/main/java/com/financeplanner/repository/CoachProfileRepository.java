@@ -26,9 +26,7 @@ public interface CoachProfileRepository extends JpaRepository<CoachProfile, Long
 
     @Query("SELECT cp FROM CoachProfile cp JOIN FETCH cp.user u WHERE " +
             "LOWER(u.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-            "LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-            "LOWER(cp.areaOfExpertise) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-            "LOWER(cp.qualification) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
             "ORDER BY u.createdAt DESC")
     List<CoachProfile> searchCoaches(@Param("keyword") String keyword);
 }
