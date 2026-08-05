@@ -181,7 +181,7 @@ export const Icons = {
 /* ═══════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════ */
-export default function DashboardPage() {
+export default function DashboardPage({ targetUser }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { setNotifications } = useNotifications();
@@ -202,7 +202,8 @@ export default function DashboardPage() {
   const [showChatModal, setShowChatModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  const firstName = user?.name?.split(' ')[0] || 'there';
+  const displayName = targetUser?.name || user?.name;
+  const firstName = displayName ? displayName.split(' ')[0] : 'there';
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   /* ─── Fetch all data ──────────────────────────────── */

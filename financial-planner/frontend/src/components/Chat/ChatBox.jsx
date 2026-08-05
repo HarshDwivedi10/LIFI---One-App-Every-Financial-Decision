@@ -6,13 +6,43 @@ import { Client } from '@stomp/stompjs';
 
 import './ChatBox.css';
 
-export default function ChatBox({ partner, onClose, onNewMessage }) {
+export default function ChatBox({ partner, onClose, onNewMessage, onHireClick, isHired }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [connected, setConnected] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const stompClientRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  // Free 10-Minute Trial Timer Logic (600 seconds)
+  const isUnlimited = isHired || partner?.hiredByCurrentUser || user?.role === 'ROLE_COACH' || partner?.role === 'ROLE_USER';
+  const trialStorageKey = `lifi_chat_trial_${user?.id}_${partner?.id}`;
+  
+  const [timeLeft, setTimeLeft] = useState(() => {
+    if (isUnlimited) return 600;
+    const stored = localStorage.getItem(trialStorageKey);
+    return stored !== null ? parseInt(stored, 10) : 600;
+  });
+
+  useEffect(() => {
+    if (isUnlimited) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          localStorage.setItem(trialStorageKey, '0');
+          return 0;
+        }
+        const updated = prev - 1;
+        localStorage.setItem(trialStorageKey, updated.toString());
+        return updated;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isUnlimited, trialStorageKey]);
 
   useEffect(() => {
     if (!partner || !user) return;
@@ -36,10 +66,8 @@ export default function ChatBox({ partner, onClose, onNewMessage }) {
       reconnectDelay: 5000,
       onConnect: () => {
         setConnected(true);
-        // Subscribe to user's private message queue
         client.subscribe(`/user/queue/messages`, (msg) => {
           const newMsg = JSON.parse(msg.body);
-          // Only show messages that belong to this conversation
           const isThisConversation =
             (newMsg.senderId === partner.id && newMsg.receiverId === user.id) ||
             (newMsg.senderId === user.id && newMsg.receiverId === partner.id);
@@ -47,12 +75,10 @@ export default function ChatBox({ partner, onClose, onNewMessage }) {
           if (isThisConversation) {
             setMessages(prev => {
               if (prev.find(m => m.id === newMsg.id)) return prev;
-              // Remove optimistic message if this is the confirmed real message
               const filtered = prev.filter(m => !(String(m.id).startsWith('temp-') && m.content === newMsg.content && m.senderId === newMsg.senderId));
               return [...filtered, newMsg];
             });
           } else {
-            // It's from another sender — bubble up for badge notification
             if (onNewMessage) onNewMessage(newMsg);
           }
         });
@@ -79,6 +105,8 @@ export default function ChatBox({ partner, onClose, onNewMessage }) {
 
   const handleSend = (e) => {
     e.preventDefault();
+    if (!isUnlimited && timeLeft <= 0) return;
+
     const client = stompClientRef.current;
     if (!newMessage.trim() || !client || !client.connected) return;
 
@@ -94,7 +122,6 @@ export default function ChatBox({ partner, onClose, onNewMessage }) {
       body: JSON.stringify(chatMessage),
     });
 
-    // Optimistically update UI so sender instantly sees their message
     const tempMsg = {
       id: 'temp-' + Date.now(),
       senderId: user.id,
@@ -107,27 +134,81 @@ export default function ChatBox({ partner, onClose, onNewMessage }) {
     setNewMessage('');
   };
 
+  const formatTimer = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const isTrialExpired = !isUnlimited && timeLeft <= 0;
+
+  if (isMinimized) {
+    return (
+      <div className="chatbox-minimized-pill" onClick={() => setIsMinimized(false)}>
+        <div className="pill-partner-info">
+          <span className={`status-dot ${connected ? 'online' : 'offline'}`} />
+          <span className="pill-name">💬 Chat: {partner?.name}</span>
+          {!isUnlimited && (
+            <span className={`pill-timer ${timeLeft < 120 ? 'warning' : ''}`}>
+              ⏱️ {formatTimer(timeLeft)}
+            </span>
+          )}
+        </div>
+        <button className="pill-expand-btn" title="Expand Chat">▲</button>
+        {onClose && (
+          <button 
+            className="pill-close-btn" 
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            title="Close"
+          >
+            &times;
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="chatbox-container">
+    <div className="chatbox-container fb-style-overlay">
+      {/* Header */}
       <div className="chatbox-header">
-        <h3>Chat with {partner?.name}</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{
-            width: '8px', height: '8px', borderRadius: '50%',
-            background: connected ? '#22c55e' : '#f59e0b',
-            display: 'inline-block'
-          }} title={connected ? 'Connected' : 'Connecting...'} />
+        <div className="header-partner">
+          <span className={`status-dot ${connected ? 'online' : 'offline'}`} title={connected ? 'Connected' : 'Connecting...'} />
+          <div className="partner-details">
+            <h3 className="partner-name">{partner?.name}</h3>
+            <span className="partner-sub">
+              {isUnlimited ? 'Active Member Chat' : (isTrialExpired ? '🔒 Free Trial Expired' : `Free Trial (${formatTimer(timeLeft)})`)}
+            </span>
+          </div>
+        </div>
+
+        <div className="header-controls">
+          {!isUnlimited && (
+            <div className={`trial-badge ${timeLeft < 120 ? 'urgent' : ''}`}>
+              ⏱️ {formatTimer(timeLeft)}
+            </div>
+          )}
+          <button className="chatbox-control-btn" onClick={() => setIsMinimized(true)} title="Minimize">
+            _
+          </button>
           {onClose && (
-            <button className="chatbox-close" onClick={onClose} title="Close Chat">
+            <button className="chatbox-control-btn close" onClick={onClose} title="Close Chat">
               &times;
             </button>
           )}
         </div>
       </div>
 
+      {/* Messages Scroll Area */}
       <div className="chatbox-messages">
+        {!isUnlimited && (
+          <div className="trial-notice-banner">
+            🎁 10-Minute Free Trial Chat with Coach {partner?.name}.
+          </div>
+        )}
+
         {messages.length === 0 ? (
-          <div className="chatbox-empty">No messages yet. Say hi!</div>
+          <div className="chatbox-empty">No messages yet. Ask any financial question!</div>
         ) : (
           messages.map((msg, index) => {
             const isMe = msg.senderId === user.id;
@@ -144,18 +225,33 @@ export default function ChatBox({ partner, onClose, onNewMessage }) {
         <div ref={messagesEndRef} />
       </div>
 
-      <form className="chatbox-input-area" onSubmit={handleSend}>
-        <input
-          type="text"
-          placeholder={connected ? 'Type a message...' : 'Connecting...'}
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          disabled={!connected}
-        />
-        <button type="submit" disabled={!newMessage.trim() || !connected}>
-          Send
-        </button>
-      </form>
+      {/* Expired Trial Lock / Input Area */}
+      {isTrialExpired ? (
+        <div className="chatbox-expired-lock">
+          <div className="lock-msg">
+            🔒 <strong>Free 10-minute trial chat ended.</strong>
+            <span>Hire Coach {partner?.name} to unlock unlimited personal financial coaching.</span>
+          </div>
+          {onHireClick && (
+            <button className="chat-hire-btn" onClick={onHireClick}>
+              💳 Hire Coach & Pay Now
+            </button>
+          )}
+        </div>
+      ) : (
+        <form className="chatbox-input-area" onSubmit={handleSend}>
+          <input
+            type="text"
+            placeholder={connected ? 'Type a message...' : 'Connecting...'}
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            disabled={!connected || isTrialExpired}
+          />
+          <button type="submit" disabled={!newMessage.trim() || !connected || isTrialExpired}>
+            Send
+          </button>
+        </form>
+      )}
     </div>
   );
 }

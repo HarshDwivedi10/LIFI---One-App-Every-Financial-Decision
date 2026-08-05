@@ -13,6 +13,10 @@ api.interceptors.request.use(config => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const targetUserId = localStorage.getItem('targetUserId');
+  if (targetUserId) {
+    config.headers['X-Target-User-Id'] = targetUserId;
+  }
   return config;
 });
 
@@ -20,10 +24,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Only clear session on 401 (unauthorized / expired token)
-      localStorage.removeItem('token');
-      localStorage.removeItem('finance_user');
-      window.location.href = '/login';
+      const isAuthEndpoint = error.config && error.config.url && error.config.url.includes('/auth/');
+      if (!isAuthEndpoint) {
+        // Only clear session and redirect on 401 when accessing protected APIs with an expired token
+        localStorage.removeItem('token');
+        localStorage.removeItem('finance_user');
+        window.location.href = '/login';
+      }
     }
     // 403 = forbidden (wrong role) — don't wipe session, just reject
     return Promise.reject(error);
@@ -95,6 +102,22 @@ export const goalApi = {
 // ─── Coach Specific ───────────────────────────────────────
 export const coachApi = {
   getAssignedUsers: () => api.get('/coach/users'),
+  getProfile: () => api.get('/coach/profile'),
+  updateProfile: (data) => api.put('/coach/profile', data),
+  postSuggestion: (targetUserId, suggestionText, category) => api.post('/coach/suggestions', { targetUserId, suggestionText, category }),
+  proposeEdit: (targetUserId, entityType, description, payloadJson) => api.post('/coach/propose-edit', { targetUserId, entityType, description, payloadJson }),
+};
+
+// ─── Public / User Coach Access ────────────────────────────
+export const userCoachApi = {
+  getActiveCoaches: () => api.get('/coaches'),
+  hireCoach: (coachId) => api.post(`/coaches/${coachId}/hire`),
+  getPermission: () => api.get('/user/coach-permission'),
+  updatePermission: (permission) => api.put('/user/coach-permission', { permission }),
+  getSuggestions: () => api.get('/user/coach-suggestions'),
+  getPendingEdits: () => api.get('/user/pending-edits'),
+  acceptPendingEdit: (id) => api.put(`/user/pending-edits/${id}/accept`),
+  rejectPendingEdit: (id) => api.put(`/user/pending-edits/${id}/reject`),
 };
 
 // ─── Chat ──────────────────────────────────────────────────

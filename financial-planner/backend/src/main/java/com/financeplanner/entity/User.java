@@ -53,6 +53,10 @@ public class User implements UserDetails {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User assignedCoach;
 
+    @Column(name = "coach_permission")
+    @Builder.Default
+    private String coachPermission = "READ_ONLY";
+
     @Column(updatable = false)
     private LocalDateTime createdAt;
 

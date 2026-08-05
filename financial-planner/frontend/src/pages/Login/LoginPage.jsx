@@ -29,7 +29,8 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error('Failed to login', err);
-      setError('Invalid email or password.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error || 'Invalid email or password.';
+      setError(serverMsg);
     } finally {
       setLoading(false);
     }

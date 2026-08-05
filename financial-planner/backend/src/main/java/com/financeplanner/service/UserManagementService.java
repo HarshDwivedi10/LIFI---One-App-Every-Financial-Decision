@@ -186,6 +186,7 @@ public class UserManagementService {
                 .totalExpenses(totalExpenses)
                 .totalAssets(totalAssets)
                 .goalCount(goalCount)
+                .coachPermission(user.getCoachPermission() != null ? user.getCoachPermission() : "READ_ONLY")
                 .build();
     }
 }

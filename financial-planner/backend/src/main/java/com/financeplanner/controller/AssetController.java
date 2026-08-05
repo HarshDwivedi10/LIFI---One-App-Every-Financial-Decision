@@ -5,6 +5,9 @@ import com.financeplanner.entity.User;
 import com.financeplanner.entity.FundTransfer;
 import com.financeplanner.repository.AssetRepository;
 import com.financeplanner.repository.FundTransferRepository;
+import com.financeplanner.repository.UserRepository;
+import com.financeplanner.service.UserResolverService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,24 +22,28 @@ public class AssetController {
 
     private final AssetRepository assetRepo;
     private final FundTransferRepository transferRepo;
-    private final com.financeplanner.repository.UserRepository userRepo;
+    private final UserRepository userRepo;
+    private final UserResolverService userResolverService;
 
     @GetMapping
-    public List<Asset> getAll(@AuthenticationPrincipal User user) {
-        return assetRepo.findByUserId(user.getId());
+    public List<Asset> getAll(@AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        return assetRepo.findByUserId(effectiveUser.getId());
     }
 
     @PostMapping
-    public Asset create(@RequestBody Asset asset, @AuthenticationPrincipal User user) {
-        User dbUser = userRepo.findById(user.getId()).orElse(user);
+    public Asset create(@RequestBody Asset asset, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        User dbUser = userRepo.findById(effectiveUser.getId()).orElse(effectiveUser);
         asset.setUser(dbUser);
         return assetRepo.save(asset);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Asset> update(@PathVariable Long id, @RequestBody Asset updated, @AuthenticationPrincipal User user) {
+    public ResponseEntity<Asset> update(@PathVariable Long id, @RequestBody Asset updated, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         return assetRepo.findById(id)
-                .filter(existing -> existing.getUser().getId().equals(user.getId()))
+                .filter(existing -> existing.getUser().getId().equals(effectiveUser.getId()))
                 .map(existing -> {
                     existing.setName(updated.getName());
                     existing.setAssetType(updated.getAssetType());
@@ -48,9 +55,10 @@ public class AssetController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User user) {
+    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         return assetRepo.findById(id)
-                .filter(existing -> existing.getUser().getId().equals(user.getId()))
+                .filter(existing -> existing.getUser().getId().equals(effectiveUser.getId()))
                 .map(existing -> {
                     assetRepo.deleteById(id);
                     return ResponseEntity.noContent().<Void>build();
@@ -64,13 +72,14 @@ public class AssetController {
     }
 
     @PostMapping("/reconcile-discrepancy")
-    public ResponseEntity<Asset> reconcileDiscrepancy(@RequestBody ReconcileRequest req, @AuthenticationPrincipal User user) {
-        Asset asset = assetRepo.findByUserId(user.getId()).stream()
+    public ResponseEntity<Asset> reconcileDiscrepancy(@RequestBody ReconcileRequest req, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        Asset asset = assetRepo.findByUserId(effectiveUser.getId()).stream()
                 .filter(a -> req.fundType.equals(a.getAssetType()))
                 .findFirst()
                 .orElseGet(() -> {
                     String name = req.fundType.equals("UNALLOCATED") ? "Unallocated Savings" : req.fundType + " Corpus";
-                    return Asset.builder().user(user).name(name).assetType(req.fundType).currentValue(0.0).build();
+                    return Asset.builder().user(effectiveUser).name(name).assetType(req.fundType).currentValue(0.0).build();
                 });
         
         asset.setCurrentValue(asset.getCurrentValue() + req.adjustmentAmount);
@@ -84,7 +93,8 @@ public class AssetController {
     }
 
     @PostMapping("/transfer")
-    public ResponseEntity<?> transferFunds(@RequestBody TransferRequest req, @AuthenticationPrincipal User user) {
+    public ResponseEntity<?> transferFunds(@RequestBody TransferRequest req, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         if (req.amount <= 0) {
             return ResponseEntity.badRequest().body("Transfer amount must be greater than zero.");
         }
@@ -92,38 +102,30 @@ public class AssetController {
             return ResponseEntity.badRequest().body("Source and destination funds cannot be the same.");
         }
 
-        // Fetch or create source asset
-        Asset sourceAsset = assetRepo.findByUserId(user.getId()).stream()
+        Asset sourceAsset = assetRepo.findByUserId(effectiveUser.getId()).stream()
                 .filter(a -> req.sourceFund.equals(a.getAssetType()))
                 .findFirst()
                 .orElseGet(() -> {
                     String name = req.sourceFund.equals("UNALLOCATED") ? "Unallocated Savings" : req.sourceFund + " Corpus";
-                    return assetRepo.save(Asset.builder().user(user).name(name).assetType(req.sourceFund).currentValue(0.0).build());
+                    return assetRepo.save(Asset.builder().user(effectiveUser).name(name).assetType(req.sourceFund).currentValue(0.0).build());
                 });
 
-        // Validation is strictly handled by the frontend which calculates the TRUE total balance 
-        // across all distributed JSON allocations. Here we allow the dedicated asset to go negative 
-        // to act as a debit ledger entry against the total pool.
-
-        // Fetch or create destination asset
-        Asset destAsset = assetRepo.findByUserId(user.getId()).stream()
+        Asset destAsset = assetRepo.findByUserId(effectiveUser.getId()).stream()
                 .filter(a -> req.destinationFund.equals(a.getAssetType()))
                 .findFirst()
                 .orElseGet(() -> {
                     String name = req.destinationFund.equals("UNALLOCATED") ? "Unallocated Savings" : req.destinationFund + " Corpus";
-                    return assetRepo.save(Asset.builder().user(user).name(name).assetType(req.destinationFund).currentValue(0.0).build());
+                    return assetRepo.save(Asset.builder().user(effectiveUser).name(name).assetType(req.destinationFund).currentValue(0.0).build());
                 });
 
-        // Apply transfer
         sourceAsset.setCurrentValue(sourceAsset.getCurrentValue() - req.amount);
         destAsset.setCurrentValue(destAsset.getCurrentValue() + req.amount);
 
         assetRepo.save(sourceAsset);
         assetRepo.save(destAsset);
 
-        // Record transfer
         FundTransfer transferLog = FundTransfer.builder()
-                .user(user)
+                .user(effectiveUser)
                 .sourceFund(req.sourceFund)
                 .destinationFund(req.destinationFund)
                 .amount(req.amount)
@@ -134,7 +136,8 @@ public class AssetController {
     }
 
     @GetMapping("/transfers")
-    public ResponseEntity<List<FundTransfer>> getTransfers(@AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(transferRepo.findByUserIdOrderByDateDesc(user.getId()));
+    public ResponseEntity<List<FundTransfer>> getTransfers(@AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        return ResponseEntity.ok(transferRepo.findByUserIdOrderByDateDesc(effectiveUser.getId()));
     }
 }

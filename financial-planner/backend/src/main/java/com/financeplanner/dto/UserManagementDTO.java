@@ -21,4 +21,6 @@ public class UserManagementDTO {
     private Double totalExpenses;
     private Double totalAssets;
     private Long goalCount;
+
+    private String coachPermission;
 }
