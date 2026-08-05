@@ -46,7 +46,7 @@ public class DemoDataSeeder implements CommandLineRunner {
                 .salaryDay(5)
                 .manualTotalSavings(100000.0) // Pre-existing savings
                 .preExistingSavingsDate(LocalDate.now().minusMonths(4).toString())
-                .fundAllocationsJson("{\"core\":{\"LONG_TERM\":20,\"SHORT_TERM\":20,\"EMERGENCY\":20,\"WEALTH\":20},\"retirement\":20}")
+                .fundAllocationsJson("{\"core\":{\"LONG_TERM\":25,\"SHORT_TERM\":25,\"EMERGENCY\":25,\"WEALTH\":25},\"retirement\":0}")
                 .build();
         john = userRepository.save(john);
 

@@ -38,87 +38,35 @@ export default function GoalManagementPage() {
 
   const fetchBaseline = async () => {
     try {
-      const [incomeRes, txnRes, assetsRes] = await Promise.all([
-        api.get('/income').catch(() => ({ data: [] })),
-        api.get('/transactions').catch(() => ({ data: [] })),
-        api.get('/assets').catch(() => ({ data: [] }))
+      const [fundBalRes, goalsRes] = await Promise.all([
+        api.get('/user/fund-balances').catch(() => ({ data: { funds: [] } })),
+        api.get('/goals').catch(() => ({ data: [] }))
       ]);
 
-      const totalIncome = incomeRes.data.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      
-      const monthExpenses = txnRes.data
-        .filter(t => {
-          const d = new Date(t.date);
-          return d.getMonth() === currentMonth && d.getFullYear() === currentYear && (t.type === 'EXPENSE' || t.type === 'DEBIT');
-        })
-        .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+      const fundData = fundBalRes.data || {};
+      const funds = fundData.funds || [];
 
-      const surplus = Math.max(0, totalIncome - monthExpenses);
-      setTotalSavings(surplus);
+      setTotalSavings(fundData.expectedMonthlySavings || 0);
 
-      // Pre-existing balances
-      const assets = assetsRes.data;
-      const getBalance = (id) => assets.filter(a => a.assetType === id || a.type === id).reduce((sum, a) => sum + parseFloat(a.currentValue || a.value || 0), 0);
-      
-      // Load allocations from unified localStorage
-      let allFundsStr = localStorage.getItem('all_funds_allocations');
-      let allFunds = [];
-      
-      if (allFundsStr) {
-        allFunds = JSON.parse(allFundsStr);
-      } else {
-        // Fallback or migration
-        const oldCoreStr = localStorage.getItem('core_allocations');
-        if (oldCoreStr) {
-           const oldCore = JSON.parse(oldCoreStr);
-           const oldRetStr = localStorage.getItem('retirement_allocation');
-           const oldRet = oldRetStr ? parseFloat(oldRetStr) : 0;
-           const oldCustomStr = localStorage.getItem('custom_allocations');
-           const oldCustom = oldCustomStr ? JSON.parse(oldCustomStr) : [];
-           
-           allFunds = [
-             { id: 'RETIREMENT', name: 'Retirement Corpus', percent: oldRet, isLocked: true },
-             { id: 'LONG_TERM', name: 'Long-Term Goal Corpus', percent: oldCore.LONG_TERM || 0, isLocked: false },
-             { id: 'SHORT_TERM', name: 'Short-Term Goal Corpus', percent: oldCore.SHORT_TERM || 0, isLocked: false },
-             { id: 'EMERGENCY', name: 'Emergency & Protection Corpus', percent: oldCore.EMERGENCY || 0, isLocked: false },
-             { id: 'WEALTH', name: 'Wealth Creation Corpus', percent: oldCore.WEALTH || 0, isLocked: false },
-             ...oldCustom.map(c => ({ id: c.id, name: c.name, percent: c.percent, isLocked: false }))
-           ];
-        } else {
-           allFunds = [...DEFAULT_FUNDS];
-        }
-      }
-
-      const fundsWithBalances = allFunds.map(f => ({
-        ...f,
-        balance: getBalance(f.id)
-      }));
-      
       const corpusMap = {};
-      fundsWithBalances.forEach(f => {
+      funds.forEach(f => {
         corpusMap[f.id] = {
           name: f.name,
           balance: f.balance,
           percent: f.percent,
-          monthlyAlloc: surplus * (parseFloat(f.percent) / 100) || 0
+          monthlyAlloc: f.monthlyAlloc
         };
       });
 
-      setFundsList(fundsWithBalances);
+      setFundsList(funds);
       setCorpuses(corpusMap);
 
-      // Set default category for modal
-      if (fundsWithBalances.length > 0) {
-        if (!newGoal.category) setNewGoal(prev => ({ ...prev, category: fundsWithBalances[0].id }));
-        setActiveTab(prev => prev || fundsWithBalances[0].id);
+      if (funds.length > 0) {
+        if (!newGoal.category) setNewGoal(prev => ({ ...prev, category: funds[0].id }));
+        setActiveTab(prev => prev || funds[0].id);
       }
 
-      // Fetch goals from backend
-      const goalsRes = await api.get('/goals').catch(() => ({ data: [] }));
-      setGoals(goalsRes.data);
-      
+      setGoals(goalsRes.data || []);
       setLoading(false);
     } catch (error) {
       console.error("Failed to load financials", error);
@@ -252,7 +200,7 @@ export default function GoalManagementPage() {
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto', fontFamily: 'var(--font-sans)', color: 'white' }}>
+    <div style={{ padding: '24px 32px', width: '100%', maxWidth: '100%', margin: '0 auto', fontFamily: 'var(--font-sans)', color: 'white' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
           <h1 style={{ fontSize: '32px', margin: '0 0 8px 0', color: 'var(--text-primary)' }}>Goal Planning</h1>
@@ -283,27 +231,74 @@ export default function GoalManagementPage() {
 
 
 
-      {/* DASHBOARD TABS */}
-      <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto' }}>
-        {fundsList.map(fund => (
-          <button 
-            key={fund.id}
-            onClick={() => setActiveTab(fund.id)}
-            style={{
-              padding: '10px 20px',
-              borderRadius: '24px',
-              background: activeTab === fund.id ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)',
-              color: activeTab === fund.id ? '#fff' : 'var(--text-secondary)',
-              border: 'none',
-              cursor: 'pointer',
-              fontWeight: activeTab === fund.id ? 700 : 500,
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {fund.name}
-          </button>
-        ))}
+      {/* 5 HORIZONTAL FUND CARDS */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', 
+        gap: '16px', 
+        marginBottom: '28px',
+        width: '100%' 
+      }}>
+        {fundsList.filter(f => f.id !== 'UNALLOCATED').map(fund => {
+          const isActive = activeTab === fund.id;
+          const fundColors = {
+            'RETIREMENT': { color: '#818CF8', border: 'rgba(129, 140, 248, 0.4)', bg: 'rgba(129, 140, 248, 0.1)' },
+            'LONG_TERM': { color: '#10B981', border: 'rgba(16, 185, 129, 0.4)', bg: 'rgba(16, 185, 129, 0.1)' },
+            'SHORT_TERM': { color: '#3B82F6', border: 'rgba(59, 130, 246, 0.4)', bg: 'rgba(59, 130, 246, 0.1)' },
+            'EMERGENCY': { color: '#F97316', border: 'rgba(249, 115, 22, 0.4)', bg: 'rgba(249, 115, 22, 0.1)' },
+            'WEALTH': { color: '#EAB308', border: 'rgba(234, 179, 8, 0.4)', bg: 'rgba(234, 179, 8, 0.1)' }
+          };
+          const styleConfig = fundColors[fund.id] || { color: '#6366F1', border: 'rgba(99, 102, 241, 0.4)', bg: 'rgba(99, 102, 241, 0.1)' };
+
+          return (
+            <div 
+              key={fund.id}
+              onClick={() => setActiveTab(fund.id)}
+              style={{
+                background: isActive ? styleConfig.bg : 'rgba(255, 255, 255, 0.03)',
+                border: `1.5px solid ${isActive ? styleConfig.color : 'rgba(255, 255, 255, 0.08)'}`,
+                boxShadow: isActive ? `0 0 16px ${styleConfig.border}` : 'none',
+                borderRadius: '12px',
+                padding: '16px 14px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                flexDirection: 'column',
+                justify: 'space-between'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ 
+                  fontSize: '11px', 
+                  fontWeight: 700, 
+                  color: styleConfig.color,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em'
+                }}>
+                  {fund.name.replace(' Corpus', '')}
+                </span>
+                <span style={{ 
+                  fontSize: '10px', 
+                  background: 'rgba(255,255,255,0.08)', 
+                  padding: '2px 6px', 
+                  borderRadius: '8px', 
+                  color: 'var(--text-muted)',
+                  fontWeight: 600
+                }}>
+                  {fund.percent}%
+                </span>
+              </div>
+
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#34D399', marginBottom: '4px' }}>
+                ₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(fund.balance || 0)}
+              </div>
+
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                +₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(fund.monthlyAlloc || 0)}<span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>/mo</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* ACTIVE TAB CONTENT */}
