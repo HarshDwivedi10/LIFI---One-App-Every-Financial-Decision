@@ -31,8 +31,8 @@ public class AutomatedSavingsScheduler {
     private final ObjectMapper objectMapper;
     private final SavingsCalculationService savingsCalculationService;
 
-    // Run every minute to support exact time precision
-    @Scheduled(cron = "0 * * * * ?")
+    // Run automated savings scheduler (disabled minute cron to prevent double-incrementing asset balances)
+    // @Scheduled(cron = "0 * * * * ?")
     @Transactional
     public void executeAutomatedSavings() {
         log.info("Starting automated savings check...");

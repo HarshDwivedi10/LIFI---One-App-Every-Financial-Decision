@@ -24,6 +24,7 @@ public class SavingsCalculationService {
     private final IncomeSourceRepository incomeSourceRepository;
     private final FixedExpenseRepository fixedExpenseRepository;
     private final AssetRepository assetRepository;
+    private final UserRepository userRepository;
 
     public double calculateLiveTotalSavings(User user) {
         Map<String, Object> breakdown = getSavingsBreakdown(user);
@@ -57,6 +58,8 @@ public class SavingsCalculationService {
             startDate = m2; // Ensure at least 3 months are tracked
         }
 
+        LocalDate regMonth = user.getCreatedAt() != null ? user.getCreatedAt().toLocalDate().withDayOfMonth(1) : m0;
+
         Map<String, double[]> monthlyTotals = new HashMap<>(); // key: "YYYY-MM", val: [income, expense]
 
         LocalDate curr = startDate;
@@ -67,28 +70,33 @@ public class SavingsCalculationService {
 
             boolean isCurrent = curr.equals(m0);
 
-            // Add templates
-            for (IncomeSource src : incomeSources) {
-                if (isCurrent) {
-                    int day = src.getDayOfMonth() != null ? src.getDayOfMonth() : 1;
-                    if (day <= today.getDayOfMonth()) inc += src.getAmount();
-                } else {
-                    inc += src.getAmount();
+            // Add templates only for current month or months on/after user registration
+            if (isCurrent || !curr.isBefore(regMonth)) {
+                for (IncomeSource src : incomeSources) {
+                    if (isCurrent) {
+                        int day = src.getDayOfMonth() != null ? src.getDayOfMonth() : 1;
+                        if (day <= today.getDayOfMonth()) inc += src.getAmount();
+                    } else {
+                        inc += src.getAmount();
+                    }
+                }
+
+                for (FixedExpense fx : fixedExpenses) {
+                    if (isCurrent) {
+                        int day = fx.getDayOfMonth() != null ? fx.getDayOfMonth() : 1;
+                        if (day <= today.getDayOfMonth()) exp += fx.getAmount();
+                    } else {
+                        exp += fx.getAmount();
+                    }
                 }
             }
 
-            for (FixedExpense fx : fixedExpenses) {
-                if (isCurrent) {
-                    int day = fx.getDayOfMonth() != null ? fx.getDayOfMonth() : 1;
-                    if (day <= today.getDayOfMonth()) exp += fx.getAmount();
-                } else {
-                    exp += fx.getAmount();
-                }
-            }
-
-            // Add transactions for this month
+            // Add transactions for this month (excluding auto-created fixed expense transactions to avoid double-counting)
             for (Transaction t : txns) {
                 if (t.getDate().getYear() == curr.getYear() && t.getDate().getMonthValue() == curr.getMonthValue()) {
+                    if (t.getFixedExpenseId() != null) {
+                        continue;
+                    }
                     if (t.getType() == Transaction.TransactionType.EXPENSE || t.getType() == Transaction.TransactionType.DEBIT) {
                         exp += t.getAmount();
                     } else if (t.getType() == Transaction.TransactionType.INCOME || t.getType() == Transaction.TransactionType.CREDIT) {
@@ -162,6 +170,12 @@ public class SavingsCalculationService {
         }
 
         List<Asset> assetsList = assetRepository.findByUserId(user.getId());
+        double sumAssets = assetsList.stream().mapToDouble(a -> a.getCurrentValue() != null ? a.getCurrentValue() : 0.0).sum();
+        if ((assetsList.isEmpty() || sumAssets == 0.0) && user.getManualTotalSavings() != null && user.getManualTotalSavings() > 0) {
+            syncPreExistingAssets(user, user.getManualTotalSavings());
+            assetsList = assetRepository.findByUserId(user.getId());
+        }
+
         Map<String, Double> preExistingAssets = new HashMap<>();
         preExistingAssets.put("RETIREMENT", 0.0);
         preExistingAssets.put("LONG_TERM", 0.0);
@@ -275,5 +289,88 @@ public class SavingsCalculationService {
         result.put("expectedMonthlySavings", expectedMonthlySavings);
         result.put("funds", fundSummaries);
         return result;
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void syncPreExistingAssets(User user, Double manualTotalSavings) {
+        if (user == null || user.getId() == null) return;
+        User dbUser = userRepository.findById(user.getId()).orElse(user);
+        if (manualTotalSavings == null) manualTotalSavings = 0.0;
+
+        ObjectMapper mapper = new ObjectMapper();
+        String fundAllocJson = dbUser.getFundAllocationsJson();
+        double retPercent = 0.0;
+        Map<String, Double> coreAlloc = new HashMap<>();
+        coreAlloc.put("LONG_TERM", 0.0);
+        coreAlloc.put("SHORT_TERM", 0.0);
+        coreAlloc.put("EMERGENCY", 0.0);
+        coreAlloc.put("WEALTH", 0.0);
+
+        if (fundAllocJson != null && !fundAllocJson.trim().isEmpty()) {
+            try {
+                Map<String, Object> parsed = mapper.readValue(fundAllocJson, new TypeReference<Map<String, Object>>() {});
+                if (parsed.containsKey("retirement") && parsed.get("retirement") != null) {
+                    retPercent = ((Number) parsed.get("retirement")).doubleValue();
+                }
+                if (parsed.containsKey("core") && parsed.get("core") != null) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> coreMap = (Map<String, Object>) parsed.get("core");
+                    for (Map.Entry<String, Object> entry : coreMap.entrySet()) {
+                        if (entry.getValue() instanceof Number) {
+                            coreAlloc.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        double totalAllocatedPct = retPercent + coreAlloc.values().stream().mapToDouble(Double::doubleValue).sum();
+        double unallocatedPct = Math.max(0.0, 100.0 - totalAllocatedPct);
+
+        Map<String, Double> fundPctMap = new HashMap<>();
+        fundPctMap.put("RETIREMENT", retPercent);
+        fundPctMap.put("LONG_TERM", coreAlloc.getOrDefault("LONG_TERM", 0.0));
+        fundPctMap.put("SHORT_TERM", coreAlloc.getOrDefault("SHORT_TERM", 0.0));
+        fundPctMap.put("EMERGENCY", coreAlloc.getOrDefault("EMERGENCY", 0.0));
+        fundPctMap.put("WEALTH", coreAlloc.getOrDefault("WEALTH", 0.0));
+        fundPctMap.put("UNALLOCATED", unallocatedPct);
+
+        Map<String, String> fundNameMap = Map.of(
+            "RETIREMENT", "Retirement Corpus",
+            "LONG_TERM", "Long-Term Goal Corpus",
+            "SHORT_TERM", "Short-Term Goal Corpus",
+            "EMERGENCY", "Emergency & Protection Corpus",
+            "WEALTH", "Wealth Creation Corpus",
+            "UNALLOCATED", "Unallocated Savings"
+        );
+
+        List<Asset> existingAssets = assetRepository.findByUserId(dbUser.getId());
+        Map<String, Asset> assetMapByFund = new HashMap<>();
+        for (Asset a : existingAssets) {
+            if (a.getAssetType() != null) {
+                assetMapByFund.put(a.getAssetType(), a);
+            }
+        }
+
+        for (Map.Entry<String, Double> entry : fundPctMap.entrySet()) {
+            String fundId = entry.getKey();
+            Double pct = entry.getValue();
+            double val = Math.round(manualTotalSavings * (pct / 100.0));
+
+            Asset asset = assetMapByFund.get(fundId);
+            if (asset != null) {
+                asset.setCurrentValue(val);
+                assetRepository.save(asset);
+            } else if (val > 0 || !"RETIREMENT".equals(fundId)) {
+                Asset newAsset = Asset.builder()
+                        .user(dbUser)
+                        .name(fundNameMap.getOrDefault(fundId, fundId))
+                        .assetType(fundId)
+                        .currentValue(val)
+                        .fundAllocations("[]")
+                        .build();
+                assetRepository.save(newAsset);
+            }
+        }
     }
 }

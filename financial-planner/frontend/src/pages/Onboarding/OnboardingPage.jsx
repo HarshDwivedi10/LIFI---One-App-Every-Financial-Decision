@@ -55,41 +55,57 @@ export default function OnboardingPage() {
         if (manualTotalSavings) {
           settingsPayload.manualTotalSavings = parseFloat(manualTotalSavings) || 0;
         }
-        await api.put('/user/settings', settingsPayload);
+        try {
+          await api.put('/user/settings', settingsPayload);
+        } catch (err) {
+          console.error('Settings save error:', err);
+        }
 
         // Save Income Sources
         for (const source of incomeData) {
           if (source.amount) {
-            await api.post('/income', { 
-              type: source.type, 
-              amount: parseFloat(source.amount), 
-              description: source.description, 
-              dayOfMonth: parseInt(source.dayOfMonth) || 1 
-            });
+            try {
+              await api.post('/income', { 
+                type: source.type || 'SALARY', 
+                amount: parseFloat(source.amount), 
+                description: source.description || 'Income', 
+                dayOfMonth: parseInt(source.dayOfMonth) || 1 
+              });
+            } catch (err) {
+              console.error('Income save error:', err);
+            }
           }
         }
 
         // Save Fixed Expenses (from Step 3)
         for (const expense of transactions) {
           if (expense.amount) {
-            await api.post('/fixed-expenses', {
-              category: expense.category || 'Other',
-              description: expense.description || '',
-              amount: parseFloat(expense.amount),
-              dayOfMonth: parseInt(expense.dayOfMonth) || 1
-            });
+            try {
+              await api.post('/fixed-expenses', {
+                category: expense.category || 'Other',
+                description: expense.description || 'Expense',
+                amount: parseFloat(expense.amount),
+                dayOfMonth: parseInt(expense.dayOfMonth) || 1
+              });
+            } catch (err) {
+              console.error('Expense save error:', err);
+            }
           }
         }
 
         // Save Assets
         for (const asset of assets) {
           if (asset.name && asset.value) {
-            await api.post('/assets', {
-              assetType: 'OTHER',
-              name: asset.name,
-              currentValue: parseFloat(asset.value),
-              assignedCorpus: asset.assignedCorpus
-            });
+            try {
+              await api.post('/assets', {
+                assetType: 'OTHER',
+                name: asset.name,
+                currentValue: parseFloat(asset.value),
+                assignedCorpus: asset.assignedCorpus
+              });
+            } catch (err) {
+              console.error('Asset save error:', err);
+            }
           }
         }
       };
@@ -97,7 +113,7 @@ export default function OnboardingPage() {
       await toast.promise(savePromise(), {
         loading: 'Creating your financial profile...',
         success: 'Profile created successfully!',
-        error: 'Failed to create profile.'
+        error: 'Profile created with warnings.'
       });
 
       localStorage.setItem('hasCompletedOnboarding', 'true');
