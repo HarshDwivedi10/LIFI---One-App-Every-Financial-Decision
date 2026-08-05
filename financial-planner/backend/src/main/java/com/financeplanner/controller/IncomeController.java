@@ -17,6 +17,7 @@ import java.util.List;
 public class IncomeController {
 
     private final IncomeSourceRepository incomeRepo;
+    private final com.financeplanner.repository.UserRepository userRepository;
 
     @GetMapping
     public List<IncomeSource> getAll(@AuthenticationPrincipal User user) {
@@ -25,7 +26,8 @@ public class IncomeController {
 
     @PostMapping
     public IncomeSource create(@RequestBody IncomeSource income, @AuthenticationPrincipal User user) {
-        income.setUser(user);
+        User dbUser = userRepository.findById(user.getId()).orElse(user);
+        income.setUser(dbUser);
         return incomeRepo.save(income);
     }
 

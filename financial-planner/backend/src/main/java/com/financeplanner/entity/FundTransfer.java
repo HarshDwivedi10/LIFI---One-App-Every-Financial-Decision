@@ -5,12 +5,12 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "fixed_expenses")
+@Table(name = "fund_transfers")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class FixedExpense {
+public class FundTransfer {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,22 +22,21 @@ public class FixedExpense {
     private User user;
 
     @Column(nullable = false)
-    private String category;
+    private String sourceFund;
+
+    @Column(nullable = false)
+    private String destinationFund;
 
     @Column(nullable = false)
     private Double amount;
 
-    private String description;
-
-    @Column(name = "day_of_month")
-    @Builder.Default
-    private Integer dayOfMonth = 1;
-
     @Column(updatable = false)
-    private LocalDateTime createdAt;
+    private LocalDateTime date;
 
     @PrePersist
     public void prePersist() {
-        this.createdAt = LocalDateTime.now();
+        if (this.date == null) {
+            this.date = LocalDateTime.now();
+        }
     }
 }
