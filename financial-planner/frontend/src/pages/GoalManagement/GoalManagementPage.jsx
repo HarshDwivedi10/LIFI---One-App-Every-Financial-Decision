@@ -285,7 +285,7 @@ export default function GoalManagementPage() {
 
       {/* DASHBOARD TABS */}
       <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto' }}>
-        {fundsList.filter(f => f.id !== 'RETIREMENT').map(fund => (
+        {fundsList.map(fund => (
           <button 
             key={fund.id}
             onClick={() => setActiveTab(fund.id)}
