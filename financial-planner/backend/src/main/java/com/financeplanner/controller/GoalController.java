@@ -4,12 +4,13 @@ import com.financeplanner.entity.Goal;
 import com.financeplanner.entity.User;
 import com.financeplanner.repository.GoalRepository;
 import com.financeplanner.repository.UserRepository;
+import com.financeplanner.service.UserResolverService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,20 +25,25 @@ public class GoalController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private UserResolverService userResolverService;
+
     @GetMapping
-    public ResponseEntity<List<Goal>> getGoals(Authentication authentication) {
+    public ResponseEntity<List<Goal>> getGoals(Authentication authentication, HttpServletRequest request) {
         User user = userRepository.findByEmail(authentication.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).build();
 
-        return ResponseEntity.ok(goalRepository.findByUser(user));
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        return ResponseEntity.ok(goalRepository.findByUser(effectiveUser));
     }
 
     @PostMapping
-    public ResponseEntity<Goal> createGoal(@RequestBody Goal goal, Authentication authentication) {
+    public ResponseEntity<Goal> createGoal(@RequestBody Goal goal, Authentication authentication, HttpServletRequest request) {
         User user = userRepository.findByEmail(authentication.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).build();
 
-        goal.setUser(user);
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        goal.setUser(effectiveUser);
         if (goal.getIsDelayed() == null) goal.setIsDelayed(false);
         if (goal.getAcknowledged() == null) goal.setAcknowledged(true);
         
@@ -46,12 +52,13 @@ public class GoalController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteGoal(@PathVariable Long id, Authentication authentication) {
+    public ResponseEntity<?> deleteGoal(@PathVariable Long id, Authentication authentication, HttpServletRequest request) {
         User user = userRepository.findByEmail(authentication.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).build();
 
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         Optional<Goal> goalOpt = goalRepository.findById(id);
-        if (goalOpt.isPresent() && goalOpt.get().getUser().getId().equals(user.getId())) {
+        if (goalOpt.isPresent() && goalOpt.get().getUser().getId().equals(effectiveUser.getId())) {
             goalRepository.deleteById(id);
             return ResponseEntity.ok().build();
         }
@@ -59,19 +66,19 @@ public class GoalController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Goal> updateGoal(@PathVariable Long id, @RequestBody Goal updatedGoal, Authentication authentication) {
+    public ResponseEntity<Goal> updateGoal(@PathVariable Long id, @RequestBody Goal updatedGoal, Authentication authentication, HttpServletRequest request) {
         User user = userRepository.findByEmail(authentication.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).build();
 
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         Optional<Goal> goalOpt = goalRepository.findById(id);
-        if (goalOpt.isPresent() && goalOpt.get().getUser().getId().equals(user.getId())) {
+        if (goalOpt.isPresent() && goalOpt.get().getUser().getId().equals(effectiveUser.getId())) {
             Goal goal = goalOpt.get();
             goal.setName(updatedGoal.getName());
             goal.setCost(updatedGoal.getCost());
             goal.setCategory(updatedGoal.getCategory());
             goal.setTargetDate(updatedGoal.getTargetDate());
             goal.setMonthlyAllocation(updatedGoal.getMonthlyAllocation());
-            // isDelayed and acknowledged are handled by reconciliation or acknowledge endpoint usually
             Goal savedGoal = goalRepository.save(goal);
             return ResponseEntity.ok(savedGoal);
         }
@@ -79,15 +86,16 @@ public class GoalController {
     }
 
     @PutMapping("/{id}/acknowledge")
-    public ResponseEntity<Goal> acknowledgeGoal(@PathVariable Long id, Authentication authentication) {
+    public ResponseEntity<Goal> acknowledgeGoal(@PathVariable Long id, Authentication authentication, HttpServletRequest request) {
         User user = userRepository.findByEmail(authentication.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).build();
 
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         Optional<Goal> goalOpt = goalRepository.findById(id);
-        if (goalOpt.isPresent() && goalOpt.get().getUser().getId().equals(user.getId())) {
+        if (goalOpt.isPresent() && goalOpt.get().getUser().getId().equals(effectiveUser.getId())) {
             Goal goal = goalOpt.get();
             goal.setAcknowledged(true);
-            goal.setIsDelayed(false); // Reset the delayed flag once acknowledged
+            goal.setIsDelayed(false);
             Goal savedGoal = goalRepository.save(goal);
             return ResponseEntity.ok(savedGoal);
         }

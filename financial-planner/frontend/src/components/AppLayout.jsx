@@ -255,25 +255,14 @@ export default function AppLayout() {
         </button>
       )}
 
-      {/* Chat with Coach Modal Overlay */}
+      {/* Floating Facebook-Style Chat Overlay */}
       {showChatModal && coachPartner && (
-        <div
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0, 0, 0, 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1000, padding: '1rem'
-          }}
-          onClick={handleCloseChat}
-        >
-          <div style={{ width: '100%', maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
-            <ChatBox
-              partner={coachPartner}
-              onClose={handleCloseChat}
-              onNewMessage={handleBackgroundMessage}
-            />
-          </div>
-        </div>
+        <ChatBox
+          partner={coachPartner}
+          isHired={true}
+          onClose={handleCloseChat}
+          onNewMessage={handleBackgroundMessage}
+        />
       )}
     </div>
   );

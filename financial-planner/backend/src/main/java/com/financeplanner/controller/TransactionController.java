@@ -3,6 +3,8 @@ package com.financeplanner.controller;
 import com.financeplanner.entity.Transaction;
 import com.financeplanner.entity.User;
 import com.financeplanner.repository.TransactionRepository;
+import com.financeplanner.service.UserResolverService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -23,28 +25,33 @@ public class TransactionController {
     private final TransactionRepository txnRepo;
     private final com.financeplanner.service.BankStatementService bankStatementService;
     private final com.financeplanner.service.ReconciliationService reconciliationService;
+    private final UserResolverService userResolverService;
 
     @GetMapping
-    public List<Transaction> getAll(@AuthenticationPrincipal User user) {
-        return txnRepo.findByUserIdOrderByDateDesc(user.getId());
+    public List<Transaction> getAll(@AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        return txnRepo.findByUserIdOrderByDateDesc(effectiveUser.getId());
     }
 
     @PostMapping
-    public Transaction create(@RequestBody Transaction transaction, @AuthenticationPrincipal User user) {
-        transaction.setUser(user);
+    public Transaction create(@RequestBody Transaction transaction, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        transaction.setUser(effectiveUser);
         return txnRepo.save(transaction);
     }
 
     @PostMapping("/bulk")
-    public List<Transaction> createBulk(@RequestBody List<Transaction> transactions, @AuthenticationPrincipal User user) {
-        transactions.forEach(t -> t.setUser(user));
+    public List<Transaction> createBulk(@RequestBody List<Transaction> transactions, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        transactions.forEach(t -> t.setUser(effectiveUser));
         return txnRepo.saveAll(transactions);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Transaction> update(@PathVariable Long id, @RequestBody Transaction updated, @AuthenticationPrincipal User user) {
+    public ResponseEntity<Transaction> update(@PathVariable Long id, @RequestBody Transaction updated, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         return txnRepo.findById(id)
-                .filter(existing -> existing.getUser().getId().equals(user.getId()))
+                .filter(existing -> existing.getUser().getId().equals(effectiveUser.getId()))
                 .map(existing -> {
                     existing.setDate(updated.getDate());
                     existing.setType(updated.getType());
@@ -57,9 +64,10 @@ public class TransactionController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User user) {
+    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         return txnRepo.findById(id)
-                .filter(existing -> existing.getUser().getId().equals(user.getId()))
+                .filter(existing -> existing.getUser().getId().equals(effectiveUser.getId()))
                 .map(existing -> {
                     txnRepo.deleteById(id);
                     return ResponseEntity.noContent().<Void>build();
@@ -71,11 +79,11 @@ public class TransactionController {
     private com.financeplanner.repository.MonthlyStatementVerificationRepository verificationRepository;
 
     @PostMapping("/upload")
-    public ResponseEntity<?> uploadStatement(@RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user) {
-        // We'll keep this endpoint for backwards compatibility or direct transaction import if needed.
+    public ResponseEntity<?> uploadStatement(@RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         if (file.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
         try {
-            List<Transaction> parsed = bankStatementService.parseStatement(file, user);
+            List<Transaction> parsed = bankStatementService.parseStatement(file, effectiveUser);
             List<Transaction> saved = txnRepo.saveAll(parsed);
             return ResponseEntity.ok(Map.of("imported", saved.size(), "transactions", saved));
         } catch (Exception e) {
@@ -84,10 +92,11 @@ public class TransactionController {
     }
 
     @PostMapping("/parse-csv-preview")
-    public ResponseEntity<?> parseCsvPreview(@RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user) {
+    public ResponseEntity<?> parseCsvPreview(@RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         if (file.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
         try {
-            List<Transaction> parsed = bankStatementService.parseStatement(file, user);
+            List<Transaction> parsed = bankStatementService.parseStatement(file, effectiveUser);
             
             double csvIncome = parsed.stream()
                 .filter(t -> "INCOME".equals(t.getType()) || "CREDIT".equals(t.getType()))
@@ -108,9 +117,10 @@ public class TransactionController {
     }
 
     @PostMapping("/save-verification")
-    public ResponseEntity<?> saveVerification(@RequestBody com.financeplanner.dto.VerificationRequestDto req, @AuthenticationPrincipal User user) {
+    public ResponseEntity<?> saveVerification(@RequestBody com.financeplanner.dto.VerificationRequestDto req, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
         try {
-            Map<String, Object> result = reconciliationService.executeVerification(user, req);
+            Map<String, Object> result = reconciliationService.executeVerification(effectiveUser, req);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Verification save failed", e);
@@ -119,8 +129,9 @@ public class TransactionController {
     }
 
     @GetMapping("/verification-status")
-    public ResponseEntity<?> getVerificationStatus(@RequestParam int year, @RequestParam int month, @AuthenticationPrincipal User user) {
-        return verificationRepository.findByUserIdAndYearAndMonth(user.getId(), year, month)
+    public ResponseEntity<?> getVerificationStatus(@RequestParam int year, @RequestParam int month, @AuthenticationPrincipal User user, HttpServletRequest request) {
+        User effectiveUser = userResolverService.getEffectiveUser(user, request);
+        return verificationRepository.findByUserIdAndYearAndMonth(effectiveUser.getId(), year, month)
                 .map(v -> ResponseEntity.ok(Map.of(
                     "isVerified", v.isVerified(),
                     "verifiedIncome", v.getVerifiedIncome(),

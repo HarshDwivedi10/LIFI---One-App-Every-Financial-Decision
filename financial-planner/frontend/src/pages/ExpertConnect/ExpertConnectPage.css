@@ -1,0 +1,655 @@
+.expert-connect-page {
+  padding: 2.5rem 2rem 4rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  color: #fff;
+  font-family: inherit;
+}
+
+/* Header Section */
+.expert-header {
+  margin-bottom: 2rem;
+}
+
+.expert-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
+}
+
+.expert-subtitle {
+  color: #8b8c9a;
+  font-size: 0.95rem;
+  margin: 0 0 1.5rem 0;
+  max-width: 800px;
+  line-height: 1.5;
+}
+
+/* Toolbar Controls */
+.expert-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  background: #11131c;
+  border: 1px solid #1e202f;
+  padding: 10px 16px;
+  border-radius: 14px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #181a26;
+  border: 1px solid #282a3c;
+  padding: 8px 14px;
+  border-radius: 10px;
+  flex: 1;
+  max-width: 460px;
+  color: #8b8c9a;
+}
+
+.search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.sort-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: #8b8c9a;
+}
+
+.sort-box select {
+  background: #181a26;
+  border: 1px solid #282a3c;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 10px;
+  outline: none;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* Carousel Container */
+.carousel-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.carousel-arrow {
+  background: #151722;
+  border: 1px solid #282a3c;
+  color: #ffffff;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.carousel-arrow:hover {
+  background: #7c3aed;
+  border-color: #a855f7;
+  color: #ffffff;
+  transform: scale(1.08);
+}
+
+.carousel-arrow:active {
+  transform: scale(0.95);
+}
+
+/* Coach Display Card */
+.coach-display-card {
+  flex: 1;
+  background: #0f1017;
+  border: 1px solid #1c1e2b;
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Split Grid Layout */
+.coach-card-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 2rem;
+}
+
+/* LEFT SIDE: Coach Profile Card */
+.coach-profile-side {
+  background: #141622;
+  border: 1px solid #222536;
+  border-radius: 16px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.profile-header-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.profile-avatar-wrapper {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #7c3aed 0%, #3b82f6 100%);
+  padding: 3px;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.25);
+}
+
+.profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #1c1e2e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.profile-avatar-fallback img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-initial {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #a855f7;
+}
+
+.profile-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coach-name {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.coach-designation {
+  color: #a78bfa;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.coach-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8b8c9a;
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+/* Badges Row */
+.coach-badges-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stat-pill {
+  background: #1b1d2d;
+  border: 1px solid #2a2d42;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pill-icon {
+  font-size: 1.1rem;
+}
+
+.pill-text {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.pill-sub {
+  font-size: 0.75rem;
+  color: #8b8c9a;
+}
+
+/* Sections */
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #222536;
+  padding-top: 1.25rem;
+}
+
+.section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.about-text {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Expertise Checklist */
+.expertise-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.expertise-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: #d1d5db;
+}
+
+.check-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+/* Action Buttons: Chat & Download CV */
+.profile-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 0.5rem;
+}
+
+.free-chat-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+  border: none;
+  color: #ffffff;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.35);
+  transition: all 0.2s ease;
+}
+
+.free-chat-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.55);
+}
+
+.download-cv-btn {
+  width: 100%;
+  background: #181a28;
+  border: 1px solid #6366f1;
+  color: #c7d2fe;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.download-cv-btn:hover {
+  background: #6366f1;
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+}
+
+/* RIGHT SIDE: Live Resume/CV Document */
+.coach-resume-side {
+  background: #0d0e17;
+  border: 1px solid #1e202f;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.resume-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #1c1e2b;
+}
+
+.resume-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.resume-page-num {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-family: monospace;
+}
+
+/* Printable Sheet View */
+.resume-sheet {
+  background: #121420;
+  border: 1px solid #202334;
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.resume-sheet::-webkit-scrollbar {
+  width: 6px;
+}
+.resume-sheet::-webkit-scrollbar-thumb {
+  background: #282b3f;
+  border-radius: 4px;
+}
+
+.sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.sheet-name {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #a78bfa;
+  margin: 0 0 4px 0;
+}
+
+.sheet-subtitle {
+  color: #e5e7eb;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.sheet-contact-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.sheet-divider {
+  border: none;
+  border-top: 1px solid #25283b;
+  margin: 0;
+}
+
+.sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheet-section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #a78bfa;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sheet-summary-text {
+  color: #d1d5db;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Timeline Components */
+.timeline-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #a78bfa;
+  margin-top: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.6);
+}
+
+.timeline-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeline-header {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.timeline-desc {
+  font-size: 0.82rem;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+/* Footer Card Bar */
+.coach-card-footer {
+  background: #141624;
+  border: 1px solid #24273c;
+  border-radius: 14px;
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.footer-pricing {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fee-label {
+  font-size: 0.75rem;
+  color: #8b8c9a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fee-amount {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.footer-security {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shield-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.security-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.sec-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.sec-sub {
+  font-size: 0.75rem;
+  color: #10b981;
+}
+
+.hire-btn {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+  color: #ffffff;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+  transition: all 0.2s ease;
+}
+
+.hire-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(124, 58, 237, 0.6);
+}
+
+.hire-btn.hired {
+  background: #10b981;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+  cursor: default;
+}
+
+.footer-microcopy {
+  text-align: center;
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-top: -0.5rem;
+}
+
+/* Loading & Empty States */
+.expert-loading-state,
+.expert-empty-state {
+  padding: 5rem;
+  text-align: center;
+  background: #0f1017;
+  border: 1px solid #1c1e2b;
+  border-radius: 20px;
+  color: #8b8c9a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.expert-empty-state span {
+  font-size: 3rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #282a3c;
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1024px) {
+  .coach-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

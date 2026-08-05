@@ -17,4 +17,21 @@ public class CoachDetailDTO {
     // Coach profile fields
     private Long profileId;
     private String resumeBase64;
+
+    private String title;
+    private String location;
+    private String yearsExperience;
+    private Double rating;
+    private String clientCount;
+    private String aboutMe;
+    private String expertise;
+    private String profilePictureBase64;
+    private Double consultationFee;
+    private String phone;
+    private String linkedIn;
+    private String professionalSummary;
+    private String experienceDetails;
+    private String educationDetails;
+
+    private boolean hiredByCurrentUser;
 }
