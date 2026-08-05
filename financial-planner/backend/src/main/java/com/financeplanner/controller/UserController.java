@@ -42,6 +42,13 @@ public class UserController {
         return ResponseEntity.ok(savingsCalculationService.getSavingsBreakdown(dbUser));
     }
 
+    @GetMapping("/fund-balances")
+    public ResponseEntity<Map<String, Object>> getFundBalances(@AuthenticationPrincipal User user) {
+        User dbUser = userRepository.findById(user.getId()).orElse(null);
+        if (dbUser == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(savingsCalculationService.getFundBalances(dbUser));
+    }
+
     @PutMapping("/settings")
     public ResponseEntity<Map<String, Object>> updateSettings(@AuthenticationPrincipal User user, @RequestBody Map<String, Object> payload) {
         User dbUser = userRepository.findById(user.getId()).orElse(null);

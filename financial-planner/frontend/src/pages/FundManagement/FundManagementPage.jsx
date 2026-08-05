@@ -4,7 +4,7 @@ import api from '../../services/api';
 import './FundManagementPage.css';
 import toast from 'react-hot-toast';
 
-const DEFAULT_ALLOCATIONS = { 'RETIREMENT': 20, 'LONG_TERM': 20, 'SHORT_TERM': 20, 'EMERGENCY': 20, 'WEALTH': 20 };
+const DEFAULT_ALLOCATIONS = { 'LONG_TERM': 25, 'SHORT_TERM': 25, 'EMERGENCY': 25, 'WEALTH': 25 };
 
 const FUNDS = [
   { id: 'RETIREMENT', name: '1. Retirement Corpus', color: '#818CF8', icon: 'cart', description: 'For your golden years and post-work life' },
@@ -30,7 +30,7 @@ export default function FundManagementPage() {
   const [preExistingSavingsDate, setPreExistingSavingsDate] = useState('');
 
   const [preExistingAssets, setPreExistingAssets] = useState({});
-  const [retirementPercent, setRetirementPercent] = useState(20);
+  const [retirementPercent, setRetirementPercent] = useState(0);
   
   const [allocations, setAllocations] = useState(DEFAULT_ALLOCATIONS);
 
@@ -199,10 +199,10 @@ export default function FundManagementPage() {
       let savedAllocations = settings.fundAllocationsJson ? JSON.parse(settings.fundAllocationsJson) : null;
       if (savedAllocations) {
         setAllocations(savedAllocations.core || DEFAULT_ALLOCATIONS);
-        setRetirementPercent(savedAllocations.retirement !== undefined ? savedAllocations.retirement : 20);
+        setRetirementPercent(savedAllocations.retirement !== undefined ? savedAllocations.retirement : 0);
       } else {
         setAllocations(DEFAULT_ALLOCATIONS);
-        setRetirementPercent(20);
+        setRetirementPercent(0);
       }
 
     } catch (err) {

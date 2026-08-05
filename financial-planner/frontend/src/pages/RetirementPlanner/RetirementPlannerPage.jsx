@@ -7,15 +7,7 @@ import toast from 'react-hot-toast';
 import './RetirementPlanner.css';
 
 function formatIndianWords(num) {
-  if (!num || isNaN(num)) return '';
-  if (num >= 10000000) {
-    return (num / 10000000).toFixed(2) + ' Cr';
-  } else if (num >= 100000) {
-    return (num / 100000).toFixed(2) + ' Lakh';
-  } else if (num >= 1000) {
-    return (num / 1000).toFixed(2) + ' K';
-  }
-  return '';
+  return numberToIndianWords(num);
 }
 
 const DEFAULT_ASSUMPTIONS = {
@@ -381,38 +373,64 @@ export default function RetirementPlannerPage() {
   useEffect(() => {
     const prefillData = async () => {
       try {
-        const [incomeRes, txnRes, assetsRes, planRes] = await Promise.all([
+        const [incomeRes, txnRes, fixedRes, fundBalancesRes, planRes] = await Promise.all([
           api.get('/income').catch(() => ({ data: [] })),
           api.get('/transactions').catch(() => ({ data: [] })),
-          api.get('/assets').catch(() => ({ data: [] })),
+          api.get('/fixed-expenses').catch(() => ({ data: [] })),
+          api.get('/user/fund-balances').catch(() => ({ data: [] })),
           api.get('/retirement/plan').catch(() => ({ data: null }))
         ]);
 
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-        const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-        const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
 
-        const sumByDate = (txns, month, year, types) => txns
+        const parseTxnDate = (d) => {
+          if (!d) return null;
+          if (Array.isArray(d)) return new Date(d[0], d[1]-1, d[2]);
+          if (typeof d === 'string' && d.includes('-')) {
+            const parts = d.split('T')[0].split('-');
+            if (parts.length === 3) return new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+          }
+          return new Date(d);
+        };
+
+        // 1. Calculate Current Month Income (Recurring + Current Month Credits)
+        const recurringIncome = (incomeRes.data || []).reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+        const extraIncome = (txnRes.data || [])
           .filter(t => {
-            const d = new Date(t.date);
-            return d.getMonth() === month && d.getFullYear() === year && types.includes(t.type);
+            const d = parseTxnDate(t.date);
+            return d && d.getMonth() === currentMonth && d.getFullYear() === currentYear && (t.type === 'CREDIT' || t.type === 'INCOME');
           })
-          .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
-
-        const prevMonthIncome = incomeRes.data.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) + sumByDate(txnRes.data, prevMonth, prevYear, ['CREDIT']);
-        const prevMonthExpenses = sumByDate(txnRes.data, prevMonth, prevYear, ['EXPENSE', 'DEBIT']);
+          .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
         
-        // Calculate retirement savings from 5 corpus structure
-        const retirementAssets = assetsRes.data
-          .filter(a => ['Retirement Corpus', 'EPF', 'PPF', 'NPS'].includes(a.type))
-          .reduce((sum, a) => sum + parseFloat(a.value || 0), 0);
+        const currentMonthIncome = recurringIncome + extraIncome;
+
+        // 2. Calculate Current Month Expenses (Recurring Fixed Expenses + Additional Current Month Expenses)
+        const recurringFixedExpenses = (fixedRes.data || []).reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+        const additionalExpenses = (txnRes.data || [])
+          .filter(t => {
+            const d = parseTxnDate(t.date);
+            return d && d.getMonth() === currentMonth && d.getFullYear() === currentYear && (t.type === 'EXPENSE' || t.type === 'DEBIT') && t.fixedExpenseId == null;
+          })
+          .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+
+        const currentMonthExpenses = recurringFixedExpenses + additionalExpenses;
+
+        // 3. Directly Fetch User's Retirement Corpus Balance from Fund Balances API
+        const fundsList = fundBalancesRes.data?.funds || (Array.isArray(fundBalancesRes.data) ? fundBalancesRes.data : []);
+        const retirementFund = fundsList.find(f => f.id === 'RETIREMENT');
+        const retirementSavings = retirementFund ? parseFloat(retirementFund.balance || 0) : 0;
+
+        const liveIncomeStr = currentMonthIncome > 0 ? Math.round(currentMonthIncome).toString() : '';
+        const liveExpenseStr = currentMonthExpenses > 0 ? Math.round(currentMonthExpenses).toString() : '';
+        const liveSavingsStr = retirementSavings > 0 ? Math.round(retirementSavings).toString() : '';
 
         setInputs(prev => ({
           ...prev,
-          monthlyIncome: prev.monthlyIncome || (prevMonthIncome > 0 ? prevMonthIncome.toString() : ''),
-          currentExpense: prev.currentExpense || (prevMonthExpenses > 0 ? prevMonthExpenses.toString() : ''),
-          currentSavings: prev.currentSavings || (retirementAssets > 0 ? retirementAssets.toString() : '')
+          monthlyIncome: liveIncomeStr || prev.monthlyIncome || '',
+          currentExpense: liveExpenseStr || prev.currentExpense || '',
+          currentSavings: liveSavingsStr || prev.currentSavings || ''
         }));
 
         if (planRes && planRes.data && planRes.data.resultJson) {
@@ -421,12 +439,12 @@ export default function RetirementPlannerPage() {
             setSelectedMode(plan.mode || 'MODE1');
             setInputs(prev => ({
                 ...prev,
-                currentAge: plan.currentAge || prev.currentAge,
-                retirementAge: plan.retirementAge || prev.retirementAge,
-                currentExpense: plan.currentMonthlyExpense || prev.currentExpense,
-                currentSavings: plan.currentRetirementSavings || prev.currentSavings,
-                monthlyIncome: plan.monthlyIncome || prev.monthlyIncome,
-                currentContribution: plan.currentMonthlyContribution || prev.currentContribution,
+                currentAge: plan.currentAge || prev.currentAge || '',
+                retirementAge: plan.retirementAge || prev.retirementAge || 60,
+                currentExpense: liveExpenseStr || (plan.currentMonthlyExpense ? Math.round(plan.currentMonthlyExpense).toString() : ''),
+                currentSavings: liveSavingsStr || (plan.currentRetirementSavings ? Math.round(plan.currentRetirementSavings).toString() : ''),
+                monthlyIncome: liveIncomeStr || (plan.monthlyIncome ? Math.round(plan.monthlyIncome).toString() : ''),
+                currentContribution: plan.currentMonthlyContribution || prev.currentContribution || '',
             }));
             setAssumptions(prev => ({
                 ...prev,
