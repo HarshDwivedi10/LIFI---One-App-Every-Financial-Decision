@@ -5,6 +5,7 @@ import com.financeplanner.entity.AccountStatus;
 import com.financeplanner.entity.CoachProfile;
 import com.financeplanner.entity.Role;
 import com.financeplanner.entity.User;
+import com.financeplanner.mapper.CoachProfileMapper;
 import com.financeplanner.repository.CoachProfileRepository;
 import com.financeplanner.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,14 @@ public class CoachManagementService {
 
     public List<CoachDetailDTO> getAllCoaches() {
         return coachProfileRepository.findAllWithUserOrderByCreatedAtDesc()
+                .stream()
+                .map(this::toDetailDTO)
+                .collect(Collectors.toList());
+    }
+
+    // Used by the public/user-facing Expert Connect page — only approved, active coaches
+    public List<CoachDetailDTO> getActiveCoaches() {
+        return coachProfileRepository.findAllByUserStatusWithUser(AccountStatus.ACTIVE)
                 .stream()
                 .map(this::toDetailDTO)
                 .collect(Collectors.toList());
@@ -138,15 +147,6 @@ public class CoachManagementService {
     }
 
     private CoachDetailDTO toDetailDTO(CoachProfile cp) {
-        User u = cp.getUser();
-        return CoachDetailDTO.builder()
-                .userId(u.getId())
-                .name(u.getName())
-                .email(u.getEmail())
-                .status(u.getStatus() != null ? u.getStatus().name() : "PENDING")
-                .createdAt(u.getCreatedAt() != null ? u.getCreatedAt().format(DATE_FMT) : "-")
-                .profileId(cp.getId())
-                .resumeBase64(cp.getResumeBase64())
-                .build();
+        return CoachProfileMapper.toDetailDTO(cp);
     }
 }
