@@ -360,77 +360,27 @@ export default function DashboardPage() {
 
       {/* ── Top: Welcome Header ──────────────────────── */}
       <div className="dashboard-header">
-        <div className="dashboard-greeting">
-          <div className="sub-date">{today}</div>
-          <h1>
-            Welcome back, <span className="name-highlight">{firstName}</span> 👋
-          </h1>
-          <div className="motivational-msg">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
-            {getMotivational()}
-          </div>
-        </div>
+  <div className="dashboard-greeting">
+    <h1>
+      Good Afternoon, <span className="name-highlight">{firstName}</span> 👋
+    </h1>
+
+    <p className="dashboard-subtitle">
+      Here's your financial overview for today.
+    </p>
+  </div>
+
+  <div className="dashboard-date">
+    {today}
+  </div>
+  
+  
 
         {/* Health score badge in header for quick view */}
-        {!loading && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-            <div
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-lg)',
-                padding: '12px 20px',
-                backdropFilter: 'blur(12px)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-sm)',
-                boxShadow: 'var(--shadow-sm)'
-              }}
-            >
-              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
-                Financial Health
-              </div>
-              <div
-                style={{
-                  fontSize: 'var(--text-lg)',
-                  fontWeight: 900,
-                  color: healthScore >= 80 ? 'var(--success)' : healthScore >= 60 ? 'var(--accent-secondary)' : healthScore >= 40 ? 'var(--warning)' : 'var(--danger)',
-                }}
-              >
-                {healthScore}/100
-              </div>
-            </div>
-          </div>
-        )}
+        
       </div>
 
-      {/* Quick Actions */}
-      <div className="section-card" style={{ marginBottom: 'var(--space-lg)' }}>
-        <div className="section-card-header" style={{ marginBottom: '0.75rem' }}>
-          <div className="section-card-title">
-            <div className="title-icon" style={{ background: 'rgba(99,102,241,0.12)', color: 'var(--accent-primary)' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>
-            </div>
-            Quick Actions
-          </div>
-        </div>
-        <div className="quick-actions-grid">
-          {quickActions.map((action) => (
-            <button
-              key={action.label}
-              className="quick-action-btn"
-              onClick={() => navigate(action.path)}
-              id={`quick-action-${action.label.toLowerCase().replace(/\s+/g, '-')}`}
-            >
-              <div className="quick-action-icon">{action.icon}</div>
-              {action.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      
       {/* ── Row 1: Financial Snapshot Cards ────────────── */}
       <div className="snapshot-grid">
         <SnapshotCard
@@ -455,29 +405,23 @@ export default function DashboardPage() {
           iconBg="rgba(99,102,241,0.12)"
           topBar="linear-gradient(135deg, #6366f1, #818cf8)"
         />
-        <SnapshotCard
-          loading={loading}
-          icon={Icons.goals}
-          title="Active Goals"
-          value={goals.length.toString()}
-          trend={goals.filter((g) => g.isDelayed && !g.acknowledged).length > 0 ? `${goals.filter((g) => g.isDelayed && !g.acknowledged).length} delayed` : 'All on track'}
-          trendDirection={goals.filter((g) => g.isDelayed && !g.acknowledged).length > 0 ? 'down' : 'up'}
-          accentColor="#3b82f6"
-          iconBg="rgba(59,130,246,0.12)"
-          topBar="linear-gradient(135deg, #3b82f6, #60a5fa)"
-        />
+        
         <SnapshotCard
           loading={loading}
           icon={Icons.retirement}
-          title="Retirement Progress"
-          value={retirementPlan ? `${retirementProgress}%` : 'Not set'}
-          trend={retirementPlan ? `Retire at ${retirementPlan.retirementAge}` : 'Set up a plan'}
-          trendDirection={retirementProgress >= 50 ? 'up' : 'neutral'}
+          title="Retirement Countdown"
+         value={retirementPlan ? "18Y : 04M : 12D" : "Not Set"}
+         trend={
+  retirementPlan
+    ? `Target Age: ${retirementPlan.retirementAge} Years`
+    : "Create your retirement plan"
+}
+         trendDirection="neutral"
           accentColor="#f59e0b"
           iconBg="rgba(245,158,11,0.12)"
           topBar="linear-gradient(135deg, #f59e0b, #fcd34d)"
         />
-        <SnapshotCard
+        {/*<SnapshotCard
           loading={loading}
           icon={Icons.emergency}
           title="Emergency Fund"
@@ -487,8 +431,8 @@ export default function DashboardPage() {
           accentColor="#ef4444"
           iconBg="rgba(239,68,68,0.12)"
           topBar="linear-gradient(135deg, #ef4444, #f87171)"
-        />
-        <SnapshotCard
+        />*/}
+       {/* <SnapshotCard
           loading={loading}
           icon={Icons.health}
           title="Health Score"
@@ -498,11 +442,11 @@ export default function DashboardPage() {
           accentColor="#8b5cf6"
           iconBg="rgba(139,92,246,0.12)"
           topBar="linear-gradient(135deg, #8b5cf6, #a78bfa)"
-        />
+        />*/}
       </div>
 
       {/* ── Row 2: Savings Chart & Expense Chart ──────── */}
-      <div className="dashboard-main-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+     {/* <div className="dashboard-main-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <ChartWrapper
           title="Savings Growth"
           icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>}
@@ -522,10 +466,10 @@ export default function DashboardPage() {
         >
           <ExpenseChart data={expenseChartData} loading={loading} />
         </ChartWrapper>
-      </div>
+      </div>*/}
 
       {/* ── Row 3: Fund Allocation & Health Score ──────── */}
-      <div className="dashboard-main-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+      {/* <div className="dashboard-main-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <ChartWrapper
           title="Fund Allocation"
           icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></svg>}
@@ -547,44 +491,74 @@ export default function DashboardPage() {
           </div>
           <HealthScoreRing score={healthScore} loading={loading} />
         </div>
-      </div>
+      </div>*/}
 
-      {/* ── Row 4: Goal Progress & Retirement Summary ──────── */}
-      <div className="dashboard-main-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', marginBottom: 'var(--space-lg)' }}>
-        <GoalProgressCard goals={goals} loading={loading} />
-        <RetirementSummaryCard retirementPlan={retirementPlan} loading={loading} />
-      </div>
+      {/* ── Goals + Right Panel ──────── */}
+      {/* Dashboard Layout */}
 
-      {/* ── Row 6: Bank Statement Summary & Financial Coach ──────── */}
-      <div className="dashboard-main-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))' }}>
-        <BankStatementSummaryCard loading={loading} statementData={statementData} />
-        <FinancialCoachCard 
-          loading={loading} 
-          coach={coach} 
-          onChatClick={() => setShowChatModal(true)}
-          onProfileClick={() => setShowProfileModal(true)}
-        />
-      </div>
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "2fr 1fr",
+    gap: "24px",
+    alignItems: "start",
+    marginBottom: "24px",
+  }}
+>
+  {/* LEFT COLUMN */}
+<div
+  style={{
+    display: "flex",
+    flexDirection: "column",
+    gap: "24px",
+    width: "90%",
+    margin: "0 auto",
+  }}
+>
+ {/* LEFT COLUMN */}
+<div
+  style={{
+    display: "flex",
+    flexDirection: "column",
+    gap: "24px",
+    width: "90%",
+    margin: "0 auto",
+  }}
+>
+  <div
+    style={{
+      height: "520px",
+    }}
+  >
+    <GoalProgressCard
+      goals={goals}
+      loading={loading}
+    />
+  </div>
+</div>
+  
 
-      {/* Chat Modal */}
-      {showChatModal && coach && (
-        <div
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0, 0, 0, 0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1000, padding: '1rem'
-          }}
-          onClick={() => setShowChatModal(false)}
-        >
-          <div style={{ width: '100%', maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
-            <ChatBox
-              partner={{ id: user.assignedCoachId, name: coach.name, role: 'ROLE_COACH' }}
-              onClose={() => setShowChatModal(false)}
-            />
-          </div>
-        </div>
-      )}
+  
+</div>
+
+  {/* RIGHT COLUMN */}
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "24px",
+    }}
+  >
+    <RetirementSummaryCard
+      retirementPlan={retirementPlan}
+      loading={loading}
+    />
+
+    
+  </div>
+</div>
+
+
 
       {/* Profile Modal */}
       {showProfileModal && coach && (
