@@ -6,13 +6,13 @@ import toast from 'react-hot-toast';
 
 const DEFAULT_ALLOCATIONS = { 'LONG_TERM': 25, 'SHORT_TERM': 25, 'EMERGENCY': 25, 'WEALTH': 25 };
 
-const FUNDS = [
-  { id: 'RETIREMENT', name: '1. Retirement Corpus', color: '#818CF8', icon: 'cart', description: 'For your golden years and post-work life' },
-  { id: 'LONG_TERM', name: '2. Long-Term Goal Corpus', color: '#10B981', icon: 'target', description: 'For big purchases like a house or car' },
-  { id: 'SHORT_TERM', name: '3. Short-Term Goal Corpus', color: '#3B82F6', icon: 'calendar', description: 'For vacations and near-term expenses' },
-  { id: 'EMERGENCY', name: '4. Emergency & Protection Corpus', color: '#F97316', icon: 'shield', description: 'Safety net for unexpected situations' },
-  { id: 'WEALTH', name: '5. Wealth Creation Corpus', color: '#EAB308', icon: 'chart', description: 'Aggressive growth and investments' },
-  { id: 'UNALLOCATED', name: '6. Unallocated Savings', color: '#9CA3AF', icon: 'scales', description: 'System-managed remaining savings' }
+const RAW_FUNDS = [
+  { id: 'RETIREMENT', rawName: 'Retirement Corpus', color: '#818CF8', icon: 'cart', description: 'For your golden years and post-work life' },
+  { id: 'LONG_TERM', rawName: 'Long-Term Goal Corpus', color: '#10B981', icon: 'target', description: 'For big purchases like a house or car' },
+  { id: 'SHORT_TERM', rawName: 'Short-Term Goal Corpus', color: '#3B82F6', icon: 'calendar', description: 'For vacations and near-term expenses' },
+  { id: 'EMERGENCY', rawName: 'Emergency & Protection Corpus', color: '#F97316', icon: 'shield', description: 'Safety net for unexpected situations' },
+  { id: 'WEALTH', rawName: 'Wealth Creation Corpus', color: '#EAB308', icon: 'chart', description: 'Aggressive growth and investments' },
+  { id: 'UNALLOCATED', rawName: 'Unallocated Savings', color: '#9CA3AF', icon: 'scales', description: 'System-managed remaining savings' }
 ];
 
 export default function FundManagementPage() {
@@ -31,15 +31,31 @@ export default function FundManagementPage() {
 
   const [preExistingAssets, setPreExistingAssets] = useState({});
   const [retirementPercent, setRetirementPercent] = useState(0);
+
+  const hasPlannedRetirement = retirementPercent > 0 || (preExistingAssets['RETIREMENT'] || 0) > 0 || !!localStorage.getItem('retirement_sip_target');
+
+  const FUNDS = RAW_FUNDS.filter(f => f.id !== 'RETIREMENT' || hasPlannedRetirement).map((f, idx) => ({
+    ...f,
+    name: `${idx + 1}. ${f.rawName}`
+  }));
   
   const [allocations, setAllocations] = useState(DEFAULT_ALLOCATIONS);
+  const [showFirstTimeAllocationModal, setShowFirstTimeAllocationModal] = useState(false);
+  const [onboardingAllocations, setOnboardingAllocations] = useState({ LONG_TERM: 25, SHORT_TERM: 25, EMERGENCY: 25, WEALTH: 25 });
 
   const isInitialMount = useRef(true);
   const isFetching = useRef(true);
   const saveTimeoutRef = useRef(null);
   
+  const hasShownToast = useRef(false);
+
   useEffect(() => {
     fetchData();
+    const params = new URLSearchParams(location.search);
+    if (params.get('firstTime') === 'true' && !hasShownToast.current) {
+      hasShownToast.current = true;
+      setShowFirstTimeAllocationModal(true);
+    }
   }, []);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -74,8 +90,8 @@ export default function FundManagementPage() {
   };
 
   const fetchData = async () => {
+    isFetching.current = true;
     try {
-      isFetching.current = true;
       setLoading(true);
       const [incomeRes, txnRes, assetsRes, userRes, fixedRes] = await Promise.all([
         api.get('/income').catch(() => ({ data: [] })),
@@ -175,8 +191,11 @@ export default function FundManagementPage() {
       }
       setSavingsGrowth(growth);
 
+      // Process assets map
+      const assetsList = assetsRes.data || [];
       const assets = { RETIREMENT: 0, LONG_TERM: 0, SHORT_TERM: 0, EMERGENCY: 0, WEALTH: 0, UNALLOCATED: 0 };
-      assetsRes.data.forEach(a => {
+      
+      assetsList.forEach(a => {
         if (a.assetType && assets[a.assetType] !== undefined) {
             if (!a.fundAllocations || a.fundAllocations === '[]') {
                 assets[a.assetType] += parseFloat(a.currentValue || 0);
@@ -194,16 +213,31 @@ export default function FundManagementPage() {
           });
         }
       });
-      setPreExistingAssets(assets);
 
       let savedAllocations = settings.fundAllocationsJson ? JSON.parse(settings.fundAllocationsJson) : null;
+      const coreMap = savedAllocations?.core || DEFAULT_ALLOCATIONS;
+      const retPct = savedAllocations?.retirement !== undefined ? savedAllocations.retirement : 0;
+
       if (savedAllocations) {
-        setAllocations(savedAllocations.core || DEFAULT_ALLOCATIONS);
-        setRetirementPercent(savedAllocations.retirement !== undefined ? savedAllocations.retirement : 0);
+        setAllocations(coreMap);
+        setRetirementPercent(retPct);
       } else {
         setAllocations(DEFAULT_ALLOCATIONS);
         setRetirementPercent(0);
       }
+
+      const totalStoredSum = Object.values(assets).reduce((a,b) => a+b, 0);
+      if (totalStoredSum === 0) {
+        const historical = Math.max(0, (settings.liveTotalSavings || 0) - currentSavings);
+        const base = historical > 0 ? historical : (settings.manualTotalSavings || 0);
+        assets.UNALLOCATED = base;
+        assets.LONG_TERM = 0;
+        assets.SHORT_TERM = 0;
+        assets.EMERGENCY = 0;
+        assets.WEALTH = 0;
+        assets.RETIREMENT = 0;
+      }
+      setPreExistingAssets(assets);
 
     } catch (err) {
       console.error(err);
@@ -646,23 +680,13 @@ export default function FundManagementPage() {
                   placeholder="e.g. 500000"
                 />
               </div>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px' }}>Date Evaluated</label>
-                <input 
-                  type="date" 
-                  value={preExistingSavingsDate} 
-                  onChange={e => setPreExistingSavingsDate(e.target.value)} 
-                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '14px', padding: '10px', borderRadius: '6px' }} 
-                />
-              </div>
             </div>
             <div className="fm-modal-footer">
               <button className="fm-btn-outline" onClick={() => setShowPreExistingModal(false)}>Cancel</button>
               <button className="fm-btn-primary" style={{ background: '#EAB308', color: '#000' }} onClick={async () => {
                 try {
                   await toast.promise(api.put('/user/settings', {
-                    manualTotalSavings: preExistingSavings,
-                    preExistingSavingsDate: preExistingSavingsDate
+                    manualTotalSavings: preExistingSavings
                   }), { loading: 'Saving...', success: 'Saved successfully!', error: 'Failed to save.' });
                   setShowPreExistingModal(false);
                 } catch (err) {}
@@ -696,7 +720,7 @@ export default function FundManagementPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(234, 179, 8, 0.08)', borderBottom: '1px solid #232533' }}>
                   <div>
                     <strong style={{ color: '#EAB308', fontSize: '14px' }}>Pre-Existing Savings</strong>
-                    <div style={{ fontSize: '11px', color: '#8B8C9A' }}>Initial starting lump sum {breakdownData?.preExistingSavingsDate ? `(Since ${breakdownData.preExistingSavingsDate})` : ''}</div>
+                    <div style={{ fontSize: '11px', color: '#8B8C9A' }}>Initial starting lump sum</div>
                   </div>
                   <strong style={{ color: '#EAB308', fontSize: '15px', alignSelf: 'center' }}>
                     +₹{new Intl.NumberFormat('en-IN').format(breakdownData?.manualTotalSavings || 0)}
@@ -964,6 +988,129 @@ export default function FundManagementPage() {
              </div>
              <h2 style={{ color: '#fff', fontSize: '24px', margin: '16px 0 8px 0' }}>Transfer Complete!</h2>
              <p style={{ color: '#8B8C9A', margin: 0 }}>Your funds have been securely moved.</p>
+          </div>
+        </div>
+      )}
+
+      {/* First-Time Onboarding Monthly Allocation Modal */}
+      {showFirstTimeAllocationModal && (
+        <div className="fm-modal-overlay" style={{ zIndex: 99999 }}>
+          <div className="fm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px', width: '90%', padding: '28px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.15)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#818CF8', marginBottom: '12px' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </div>
+              <h2 style={{ color: '#fff', fontSize: '22px', fontWeight: 700, margin: '0 0 8px 0' }}>Welcome! Allocate Your Monthly Savings</h2>
+              <p style={{ color: '#8B8C9A', fontSize: '13px', margin: 0, lineHeight: 1.5 }}>
+                Distribute your monthly savings across your 4 core funds. Your pre-existing lump sum savings are safely stored in your <strong style={{ color: '#9CA3AF' }}>Unallocated Fund</strong>.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+              {[
+                { id: 'LONG_TERM', name: '1. Long-Term Goal Corpus', color: '#10B981', desc: 'Big purchases like house or car' },
+                { id: 'SHORT_TERM', name: '2. Short-Term Goal Corpus', color: '#3B82F6', desc: 'Vacations, near-term expenses' },
+                { id: 'EMERGENCY', name: '3. Emergency & Protection Corpus', color: '#F97316', desc: 'Safety net for unexpected situations' },
+                { id: 'WEALTH', name: '4. Wealth Creation Corpus', color: '#EAB308', desc: 'Aggressive growth & investments' },
+              ].map(f => {
+                const val = onboardingAllocations[f.id] || 0;
+                const monthlyRs = expectedMonthlySavings * (val / 100);
+                return (
+                  <div key={f.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid #232533', borderRadius: '10px', padding: '14px 18px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: f.color }} />
+                        <span style={{ color: '#fff', fontWeight: 600, fontSize: '14px' }}>{f.name}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="number" 
+                          min="0" max="100" 
+                          value={val}
+                          onChange={(e) => {
+                            let n = parseFloat(e.target.value) || 0;
+                            if (n < 0) n = 0;
+                            if (n > 100) n = 100;
+                            setOnboardingAllocations(prev => ({ ...prev, [f.id]: n }));
+                          }}
+                          style={{ width: '60px', background: '#12141D', border: '1px solid #37394D', color: f.color, fontWeight: 700, textAlign: 'center', padding: '4px 6px', borderRadius: '6px', fontSize: '14px' }}
+                        />
+                        <span style={{ color: '#8B8C9A', fontSize: '13px' }}>%</span>
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <input 
+                        type="range" min="0" max="100" step="1" 
+                        value={val}
+                        onChange={(e) => {
+                          const n = parseFloat(e.target.value) || 0;
+                          setOnboardingAllocations(prev => ({ ...prev, [f.id]: n }));
+                        }}
+                        style={{ 
+                          flex: 1, 
+                          height: '6px',
+                          borderRadius: '3px',
+                          background: `linear-gradient(to right, ${f.color} ${val}%, #232533 ${val}%)`,
+                          '--thumb-color': f.color,
+                          cursor: 'pointer' 
+                        }}
+                      />
+                      <span style={{ color: '#8B8C9A', fontSize: '12px', minWidth: '85px', textAlign: 'right' }}>
+                        ₹{new Intl.NumberFormat('en-IN').format(Math.round(monthlyRs))}/mo
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Allocation Total Indicator */}
+            {(() => {
+              const total = Object.values(onboardingAllocations).reduce((a,b) => a+b, 0);
+              return (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: total === 100 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(249, 115, 22, 0.1)', border: `1px solid ${total === 100 ? '#10B981' : '#F97316'}`, borderRadius: '8px', marginBottom: '20px' }}>
+                  <span style={{ color: total === 100 ? '#10B981' : '#F97316', fontWeight: 600, fontSize: '14px' }}>
+                    {total === 100 ? '✓ 100% Fully Allocated' : `Total: ${total.toFixed(1)}% (${total < 100 ? `${(100-total).toFixed(1)}% remaining` : `${(total-100).toFixed(1)}% over`})`}
+                  </span>
+                  <span style={{ color: '#8B8C9A', fontSize: '12px' }}>
+                    Monthly Savings: ₹{new Intl.NumberFormat('en-IN').format(expectedMonthlySavings)}
+                  </span>
+                </div>
+              );
+            })()}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                className="fm-btn-outline" 
+                onClick={() => {
+                  setShowFirstTimeAllocationModal(false);
+                  toast.success('Pre-existing savings moved to Unallocated Fund.', { icon: '💰' });
+                }}
+              >
+                Skip for Now
+              </button>
+              <button 
+                className="fm-btn-primary" 
+                style={{ background: '#4F46E5', color: '#fff', padding: '10px 24px', fontSize: '14px', fontWeight: 600 }}
+                onClick={async () => {
+                  setAllocations(onboardingAllocations);
+                  try {
+                    await toast.promise(api.put('/user/settings', {
+                      manualTotalSavings: preExistingSavings,
+                      fundAllocationsJson: JSON.stringify({ core: onboardingAllocations, retirement: 0 })
+                    }), {
+                      loading: 'Saving monthly allocation...',
+                      success: 'Monthly allocation saved successfully!',
+                      error: 'Failed to save allocation.'
+                    });
+                  } catch(e){}
+                  setShowFirstTimeAllocationModal(false);
+                }}
+              >
+                Save Monthly Allocation
+              </button>
+            </div>
           </div>
         </div>
       )}

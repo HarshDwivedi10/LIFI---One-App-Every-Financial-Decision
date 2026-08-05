@@ -5,8 +5,6 @@ export default function PreExistingSavingsModal({
   onClose,
   preExistingSavings,
   setPreExistingSavings,
-  preExistingSavingsDate,
-  setPreExistingSavingsDate,
   onSave
 }) {
   if (!show) return null;
@@ -32,15 +30,7 @@ export default function PreExistingSavingsModal({
               placeholder="e.g. 500000"
             />
           </div>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px' }}>Date Evaluated</label>
-            <input 
-              type="date" 
-              value={preExistingSavingsDate} 
-              onChange={e => setPreExistingSavingsDate(e.target.value)} 
-              style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '14px', padding: '10px', borderRadius: '6px' }} 
-            />
-          </div>
+
         </div>
         <div className="fm-modal-footer">
           <button className="fm-btn-outline" onClick={onClose}>Cancel</button>

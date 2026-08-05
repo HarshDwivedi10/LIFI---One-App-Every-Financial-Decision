@@ -37,14 +37,14 @@ public class FixedExpenseController {
 
     @PostMapping
     public FixedExpense create(@RequestBody FixedExpense expense, @AuthenticationPrincipal User user) {
-        expense.setUser(user);
+        User dbUser = userRepository.findById(user.getId()).orElse(user);
+        expense.setUser(dbUser);
         if (expense.getDayOfMonth() == null || expense.getDayOfMonth() < 1) expense.setDayOfMonth(1);
         if (expense.getDayOfMonth() > 30) expense.setDayOfMonth(30);
 
         FixedExpense saved = fixedExpenseRepo.save(expense);
         
         // Dynamic Sync Logic
-        User dbUser = userRepository.findById(user.getId()).orElse(user);
         LocalDate today = LocalDate.now();
         
         if (isDeductionReached(saved, today)) {

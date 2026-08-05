@@ -54,6 +54,7 @@ public class UserController {
         User dbUser = userRepository.findById(user.getId()).orElse(null);
         if (dbUser == null) return ResponseEntity.notFound().build();
         
+        boolean manualSavingsChanged = false;
         boolean salaryDayChanged = false;
         
         if (payload.containsKey("salaryDay")) {
@@ -68,18 +69,24 @@ public class UserController {
         }
         if (payload.containsKey("manualTotalSavings")) {
             dbUser.setManualTotalSavings(Double.parseDouble(payload.get("manualTotalSavings").toString()));
+            manualSavingsChanged = true;
         }
         if (payload.containsKey("preExistingSavingsDate")) {
             dbUser.setPreExistingSavingsDate(payload.get("preExistingSavingsDate").toString());
         }
         if (payload.containsKey("fundAllocationsJson")) {
             dbUser.setFundAllocationsJson(payload.get("fundAllocationsJson").toString());
+            manualSavingsChanged = true;
         }
         
         userRepository.save(dbUser);
         
         if (salaryDayChanged) {
             fixedExpenseAdjustmentService.adjustFixedExpensesForDateChange(dbUser, dbUser.getSalaryDay());
+        }
+
+        if (manualSavingsChanged || dbUser.getManualTotalSavings() != null) {
+            savingsCalculationService.syncPreExistingAssets(dbUser, dbUser.getManualTotalSavings());
         }
 
         Map<String, Object> response = new java.util.HashMap<>();

@@ -19,6 +19,7 @@ public class AssetController {
 
     private final AssetRepository assetRepo;
     private final FundTransferRepository transferRepo;
+    private final com.financeplanner.repository.UserRepository userRepo;
 
     @GetMapping
     public List<Asset> getAll(@AuthenticationPrincipal User user) {
@@ -27,7 +28,8 @@ public class AssetController {
 
     @PostMapping
     public Asset create(@RequestBody Asset asset, @AuthenticationPrincipal User user) {
-        asset.setUser(user);
+        User dbUser = userRepo.findById(user.getId()).orElse(user);
+        asset.setUser(dbUser);
         return assetRepo.save(asset);
     }
 
