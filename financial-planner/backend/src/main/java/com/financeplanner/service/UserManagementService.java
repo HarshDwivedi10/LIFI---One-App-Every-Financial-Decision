@@ -13,6 +13,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -28,12 +30,16 @@ public class UserManagementService {
     private final GoalRepository goalRepository;
     private final CoachProfileRepository coachProfileRepository;
     private final RetirementPlanRepository retirementPlanRepository;
-    private final NotificationRepository notificationRepository;
     private final MessageRepository messageRepository;
     private final FixedExpenseRepository fixedExpenseRepository;
     private final BankTransactionRepository bankTransactionRepository;
-    private final GmailIntegrationRepository gmailIntegrationRepository;
+
     private final MonthlyStatementVerificationRepository monthlyStatementVerificationRepository;
+    private final CoachSuggestionRepository coachSuggestionRepository;
+    private final PendingEditRepository pendingEditRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
@@ -143,7 +149,7 @@ public class UserManagementService {
         fixedExpenseRepository.deleteAll(fixedExpenseRepository.findByUserId(userId));
         bankTransactionRepository.deleteAll(bankTransactionRepository.findByUserId(userId));
         monthlyStatementVerificationRepository.deleteAll(monthlyStatementVerificationRepository.findByUserId(userId));
-        gmailIntegrationRepository.findByUserId(userId).ifPresent(gmailIntegrationRepository::delete);
+
 
         // 4. Delete ALL retirement plans for this user (Fixes FK constraint)
         retirementPlanRepository.deleteAll(retirementPlanRepository.findByUserId(userId));
@@ -152,11 +158,20 @@ public class UserManagementService {
         coachProfileRepository.findByUser(user)
                 .ifPresent(coachProfileRepository::delete);
 
-        // 6. Delete all notifications for this user
-        notificationRepository.deleteAll(notificationRepository.findByUserId(userId));
 
         // 7. Delete all chat messages where user is sender or receiver
         messageRepository.deleteAll(messageRepository.findBySenderIdOrReceiverId(userId, userId));
+        
+        // 7b. Delete additional user-related entities to prevent FK constraint failures
+        coachSuggestionRepository.deleteAll(coachSuggestionRepository.findByUserIdOrderByCreatedAtDesc(userId));
+        pendingEditRepository.deleteAll(pendingEditRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, "PENDING"));
+        pendingEditRepository.deleteAll(pendingEditRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, "APPROVED"));
+        pendingEditRepository.deleteAll(pendingEditRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, "REJECTED"));
+
+        // 7c. Delete fund_transfers rows (join table — no JPA entity, requires native SQL)
+        entityManager.createNativeQuery("DELETE FROM fund_transfers WHERE user_id = :uid")
+                .setParameter("uid", userId)
+                .executeUpdate();
 
         // 8. Delete user
         userRepository.delete(user);

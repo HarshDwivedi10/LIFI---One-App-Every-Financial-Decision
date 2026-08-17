@@ -37,6 +37,13 @@ api.interceptors.response.use(
   }
 );
 
+// ─── Auth ──────────────────────────────────────────────
+export const authApi = {
+  sendRegistrationOtp: (email) => api.post('/auth/send-registration-otp', { email }),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  changePassword: (newPassword) => api.post('/auth/change-password', { newPassword }),
+};
+
 // ─── Income ────────────────────────────────────────────
 export const incomeApi = {
   getAll: () => api.get('/income'),
@@ -78,10 +85,6 @@ export const liabilityApi = {
   delete: (id) => api.delete(`/liabilities/${id}`),
 };
 
-// ─── Financial Profile ──────────────────────────────────
-export const profileApi = {
-  getSummary: () => api.get('/profile/summary'),
-};
 
 // ─── Retirement Planner ─────────────────────────────────
 export const retirementApi = {

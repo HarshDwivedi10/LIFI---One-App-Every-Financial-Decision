@@ -497,3 +497,62 @@ input[type=number] {
   border-bottom: 1px solid #232533;
 }
 
+/* ── Goal Suggestion Feasibility Banner ────────────────── */
+.goal-suggestion-box {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  animation: fmFadeIn 0.25s ease;
+}
+
+.goal-feasible {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.goal-infeasible {
+  background: rgba(249, 115, 22, 0.08);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.goal-suggestion-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.goal-suggestion-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.goal-feasible .goal-suggestion-title {
+  color: #34D399;
+}
+
+.goal-infeasible .goal-suggestion-title {
+  color: #FB923C;
+}
+
+.goal-suggestion-sub {
+  font-size: 12px;
+  color: #9CA3AF;
+  line-height: 1.5;
+}
+
+.goal-suggestion-projected {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
+  line-height: 1.5;
+  border-left: 2px solid rgba(249, 115, 22, 0.5);
+}

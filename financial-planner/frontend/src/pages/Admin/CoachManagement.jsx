@@ -24,6 +24,7 @@ function StatusBadge({ status }) {
 
 // ─── Profile Modal ────────────────────────────────────
 function ProfileModal({ coach, onClose, onAction }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   if (!coach) return null;
   const initials = (coach.name || 'C').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
 
@@ -86,7 +87,14 @@ function ProfileModal({ coach, onClose, onAction }) {
           {coach.status === 'SUSPENDED' && (
             <button className="modal-action-btn activate" onClick={() => onAction('activate', coach)}>▶ Activate</button>
           )}
-          <button className="modal-action-btn delete" onClick={() => onAction('delete', coach)}>🗑 Delete</button>
+          {confirmDelete ? (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="modal-action-btn" style={{ background: '#10B981' }} onClick={() => onAction('delete', coach)}>✔️ Confirm</button>
+              <button className="modal-action-btn" style={{ background: '#475569' }} onClick={() => setConfirmDelete(false)}>✖️ Cancel</button>
+            </div>
+          ) : (
+            <button className="modal-action-btn delete" onClick={() => setConfirmDelete(true)}>🗑 Delete</button>
+          )}
         </div>
       </div>
     </div>
@@ -124,6 +132,7 @@ export default function CoachManagement() {
   const [search, setSearch] = useState('');
   const [selectedCoach, setSelectedCoach] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // ── Fetch coaches ──
@@ -167,6 +176,7 @@ export default function CoachManagement() {
       if (action === 'delete') {
         await api.delete(`/admin/coaches/${coach.userId}`);
         toast.success(`${coach.name} deleted successfully`);
+        setDeletingId(null);
       } else {
         await api.put(`/admin/coaches/${coach.userId}/${action}`);
         const label = action.charAt(0).toUpperCase() + action.slice(1);
@@ -184,10 +194,9 @@ export default function CoachManagement() {
 
   // ── Action handler (shows confirm for destructive actions) ──
   const handleAction = (action, coach) => {
-    const destructive = ['delete', 'reject', 'suspend'];
+    const destructive = ['reject', 'suspend'];
     if (destructive.includes(action)) {
       const configs = {
-        delete: { title: 'Delete Coach', message: `Are you sure you want to permanently delete ${coach.name}? This cannot be undone.`, icon: '🗑️', label: 'Delete', style: 'danger' },
         reject: { title: 'Reject Application', message: `Reject the coach application from ${coach.name}? They will not be able to login.`, icon: '✕', label: 'Reject', style: 'danger' },
         suspend: { title: 'Suspend Coach', message: `Suspend ${coach.name}? They will be unable to login until reactivated.`, icon: '⏸️', label: 'Suspend', style: 'warn' },
       };
@@ -213,19 +222,17 @@ export default function CoachManagement() {
       {/* ── Header ── */}
       <header className="admin-header">
         <div className="admin-header-left">
-          <div className="admin-logo">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
-            FinancePlanner
+          <div className="admin-logo" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem', fontWeight: 'bold', color: '#fff' }}>
+            <img src="/src/assets/logo.png" alt="LI.FI Logo" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+            LI.FI
           </div>
           <span className="admin-badge">Admin</span>
 
           {/* Nav Tabs */}
           <nav className="admin-nav-tabs">
             <Link to="/admin" className="admin-nav-tab">📊 Dashboard</Link>
-            <Link to="/admin/coaches" className="admin-nav-tab active">🎓 Coach Mgt</Link>
-            <Link to="/admin/users" className="admin-nav-tab">👥 User Mgt</Link>
+            <Link to="/admin/coaches" className="admin-nav-tab active">🎓 Coach Management</Link>
+            <Link to="/admin/users" className="admin-nav-tab">👥 User Management</Link>
           </nav>
         </div>
         <div className="admin-header-right">
@@ -357,7 +364,14 @@ export default function CoachManagement() {
                           {coach.status === 'SUSPENDED' && (
                             <button className="action-btn activate" onClick={() => handleAction('activate', coach)} title="Activate">▶</button>
                           )}
-                          <button className="action-btn delete" onClick={() => handleAction('delete', coach)} title="Delete">🗑</button>
+                          {deletingId === coach.userId ? (
+                            <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                              <button className="action-btn" style={{ color: '#10B981', background: 'none' }} onClick={() => performAction('delete', coach)}>✔️</button>
+                              <button className="action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeletingId(null)}>✖️</button>
+                            </div>
+                          ) : (
+                            <button className="action-btn delete" onClick={() => setDeletingId(coach.userId)} title="Delete">🗑</button>
+                          )}
                         </div>
                       </td>
                     </tr>

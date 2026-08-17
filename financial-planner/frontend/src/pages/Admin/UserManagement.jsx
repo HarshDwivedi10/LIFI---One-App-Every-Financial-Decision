@@ -140,6 +140,7 @@ export default function UserManagement() {
   const [totalElements, setTotalElements] = useState(0);
 
   const [confirm, setConfirm] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [assignCoachUser, setAssignCoachUser] = useState(null);
   const [changeRoleUser, setChangeRoleUser] = useState(null);
 
@@ -202,6 +203,7 @@ export default function UserManagement() {
       if (action === 'delete') {
         await api.delete(`/admin/users/${u.id}`);
         toast.success(`User ${u.name} deleted successfully`);
+        setDeletingId(null);
       } else if (action === 'suspend') {
         await api.put(`/admin/users/${u.id}/suspend`);
         toast.success(`User suspended`);
@@ -216,7 +218,7 @@ export default function UserManagement() {
         const label = action.charAt(0).toUpperCase() + action.slice(1);
         toast.success(`${u.name} ${label.toLowerCase()}d successfully`);
       }
-      setConfirm(null);
+      if (action !== 'delete') setConfirm(null);
       fetchUsers();
     } catch (err) {
       toast.error(err.response?.data?.error || `Failed to ${action} user`);
@@ -248,18 +250,16 @@ export default function UserManagement() {
     <div className="admin-dashboard">
       <header className="admin-header">
         <div className="admin-header-left">
-          <div className="admin-logo">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
-            FinancePlanner
+          <div className="admin-logo" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem', fontWeight: 'bold', color: '#fff' }}>
+            <img src="/src/assets/logo.png" alt="LI.FI Logo" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+            LI.FI
           </div>
           <span className="admin-badge">Admin</span>
 
           <nav className="admin-nav-tabs">
             <Link to="/admin" className="admin-nav-tab">📊 Dashboard</Link>
-            <Link to="/admin/coaches" className="admin-nav-tab">🎓 Coach Mgt</Link>
-            <Link to="/admin/users" className="admin-nav-tab active">👥 User Mgt</Link>
+            <Link to="/admin/coaches" className="admin-nav-tab">🎓 Coach Management</Link>
+            <Link to="/admin/users" className="admin-nav-tab active">👥 User Management</Link>
           </nav>
         </div>
         <div className="admin-header-right">
@@ -349,7 +349,6 @@ export default function UserManagement() {
                   <th>User</th>
                   <th>Role & Status</th>
                   <th>Contact</th>
-                  <th>Financial Summary</th>
                   <th>Assigned Coach</th>
                   <th>Actions</th>
                 </tr>
@@ -380,14 +379,7 @@ export default function UserManagement() {
                           <div>📱 {u.phone}</div>
                         </div>
                       </td>
-                      <td>
-                        <div style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.2rem 1rem' }}>
-                          <div>Income: <span style={{ color: '#34d399' }}>{formatCurrency(u.totalIncome)}</span></div>
-                          <div>Expenses: <span style={{ color: '#f87171' }}>{formatCurrency(u.totalExpenses)}</span></div>
-                          <div>Assets: <span style={{ color: '#60a5fa' }}>{formatCurrency(u.totalAssets)}</span></div>
-                          <div>Goals: <span style={{ color: '#fbbf24' }}>{u.goalCount}</span></div>
-                        </div>
-                      </td>
+
                       <td>
                         <div style={{ fontSize: '0.75rem', color: u.assignedCoachName ? '#a78bfa' : '#475569' }}>
                           {u.assignedCoachName ? `🎓 ${u.assignedCoachName}` : 'No Coach'}
@@ -406,7 +398,14 @@ export default function UserManagement() {
                           {u.status === 'SUSPENDED' && (
                             <button className="action-btn activate" onClick={() => confirmAction('activate', u)} title="Activate">▶</button>
                           )}
-                          <button className="action-btn reject" onClick={() => confirmAction('delete', u)} title="Delete User">🗑️</button>
+                          {deletingId === u.id ? (
+                            <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                              <button className="action-btn" style={{ color: '#10B981', background: 'none' }} onClick={() => performAction('delete', u)}>✔️</button>
+                              <button className="action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeletingId(null)}>✖️</button>
+                            </div>
+                          ) : (
+                            <button className="action-btn reject" onClick={() => setDeletingId(u.id)} title="Delete User">🗑️</button>
+                          )}
                         </div>
                       </td>
                     </tr>

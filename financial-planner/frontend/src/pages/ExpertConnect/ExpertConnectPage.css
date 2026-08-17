@@ -1,5 +1,5 @@
 .expert-connect-page {
-  padding: 2.5rem 2rem 4rem;
+  padding: 1.5rem 2rem 2rem;
   max-width: 1400px;
   margin: 0 auto;
   color: #fff;
@@ -121,18 +121,18 @@
   background: #0f1017;
   border: 1px solid #1c1e2b;
   border-radius: 20px;
-  padding: 2rem;
+  padding: 1.5rem;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 /* Split Grid Layout */
 .coach-card-grid {
   display: grid;
   grid-template-columns: 360px 1fr;
-  gap: 2rem;
+  gap: 1.5rem;
 }
 
 /* LEFT SIDE: Coach Profile Card */
@@ -140,10 +140,10 @@
   background: #141622;
   border: 1px solid #222536;
   border-radius: 16px;
-  padding: 1.75rem;
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .profile-header-group {
@@ -403,11 +403,11 @@
   background: #121420;
   border: 1px solid #202334;
   border-radius: 12px;
-  padding: 2rem;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  max-height: 520px;
+  gap: 1rem;
+  max-height: 460px;
   overflow-y: auto;
 }
 

@@ -25,7 +25,7 @@ public class AutomatedSavingsScheduler {
     private final UserRepository userRepository;
     private final TransactionRepository transactionRepository;
     private final AssetRepository assetRepository;
-    private final NotificationRepository notificationRepository;
+
     private final FixedExpenseRepository fixedExpenseRepository;
     private final IncomeSourceRepository incomeSourceRepository;
     private final ObjectMapper objectMapper;
@@ -138,37 +138,81 @@ public class AutomatedSavingsScheduler {
                     if (projectedSavings > 0) {
                         log.info("Applying automated savings for user {}: Net Savings = {}", user.getEmail(), projectedSavings);
                         
-                        // Distribute to funds based on JSON
+                        // Distribute to funds based on JSON (supports old core/retirement structure and new dynamic flat structure)
                         if (user.getFundAllocationsJson() != null && !user.getFundAllocationsJson().isEmpty() && !user.getFundAllocationsJson().equals("{}")) {
                             JsonNode json = objectMapper.readTree(user.getFundAllocationsJson());
-                            JsonNode core = json.get("core");
-                            double retirementPct = json.has("retirement") ? json.get("retirement").asDouble() : 0;
-                            
                             List<Asset> assets = assetRepository.findByUserId(user.getId());
-                            double totalAllocatedPct = retirementPct;
+                            double totalAllocatedPct = 0.0;
                             
-                            // Apply retirement
-                            if (retirementPct > 0) {
-                                Asset ret = assets.stream().filter(a -> "RETIREMENT".equals(a.getAssetType())).findFirst().orElse(null);
-                                if (ret == null) {
-                                    ret = Asset.builder().user(user).name("Retirement Corpus").assetType("RETIREMENT").currentValue(0.0).build();
-                                }
-                                ret.setCurrentValue(ret.getCurrentValue() + (projectedSavings * (retirementPct / 100.0)));
-                                assetRepository.save(ret);
+                            String monthKey = today.getYear() + "-" + String.format("%02d", today.getMonthValue());
+                            JsonNode monthAllocations = null;
+                            if (json.has("_timeline") && json.get("_timeline").has(monthKey)) {
+                                monthAllocations = json.get("_timeline").get(monthKey);
                             }
                             
-                            // Apply core
-                            if (core != null) {
-                                Iterator<Map.Entry<String, JsonNode>> fields = core.fields();
+                            if (monthAllocations != null) {
+                                Iterator<Map.Entry<String, JsonNode>> fields = monthAllocations.fields();
                                 while (fields.hasNext()) {
                                     Map.Entry<String, JsonNode> entry = fields.next();
                                     String fundId = entry.getKey();
+                                    if ("UNALLOCATED".equals(fundId)) continue;
                                     double pct = entry.getValue().asDouble();
                                     totalAllocatedPct += pct;
                                     if (pct > 0) {
                                         Asset fund = assets.stream().filter(a -> fundId.equals(a.getAssetType())).findFirst().orElse(null);
                                         if (fund == null) {
-                                            fund = Asset.builder().user(user).name(fundId + " Corpus").assetType(fundId).currentValue(0.0).build();
+                                            fund = Asset.builder().user(user).name(fundId).assetType(fundId).currentValue(0.0).build();
+                                        }
+                                        fund.setCurrentValue(fund.getCurrentValue() + (projectedSavings * (pct / 100.0)));
+                                        assetRepository.save(fund);
+                                    }
+                                }
+                            } else if (json.has("core") || json.has("retirement")) {
+                                JsonNode core = json.get("core");
+                                double retirementPct = json.has("retirement") ? json.get("retirement").asDouble() : 0;
+                                totalAllocatedPct += retirementPct;
+                                
+                                // Apply retirement
+                                if (retirementPct > 0) {
+                                    Asset ret = assets.stream().filter(a -> "RETIREMENT".equals(a.getAssetType())).findFirst().orElse(null);
+                                    if (ret == null) {
+                                        ret = Asset.builder().user(user).name("Retirement Corpus").assetType("RETIREMENT").currentValue(0.0).build();
+                                    }
+                                    ret.setCurrentValue(ret.getCurrentValue() + (projectedSavings * (retirementPct / 100.0)));
+                                    assetRepository.save(ret);
+                                }
+                                
+                                // Apply core
+                                if (core != null) {
+                                    Iterator<Map.Entry<String, JsonNode>> fields = core.fields();
+                                    while (fields.hasNext()) {
+                                        Map.Entry<String, JsonNode> entry = fields.next();
+                                        String fundId = entry.getKey();
+                                        double pct = entry.getValue().asDouble();
+                                        totalAllocatedPct += pct;
+                                        if (pct > 0) {
+                                            Asset fund = assets.stream().filter(a -> fundId.equals(a.getAssetType())).findFirst().orElse(null);
+                                            if (fund == null) {
+                                                fund = Asset.builder().user(user).name(fundId + " Corpus").assetType(fundId).currentValue(0.0).build();
+                                            }
+                                            fund.setCurrentValue(fund.getCurrentValue() + (projectedSavings * (pct / 100.0)));
+                                            assetRepository.save(fund);
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Dynamic flat structure
+                                Iterator<Map.Entry<String, JsonNode>> fields = json.fields();
+                                while (fields.hasNext()) {
+                                    Map.Entry<String, JsonNode> entry = fields.next();
+                                    String fundId = entry.getKey();
+                                    if ("UNALLOCATED".equals(fundId) || "_metadata".equals(fundId) || "_timeline".equals(fundId)) continue;
+                                    double pct = entry.getValue().asDouble();
+                                    totalAllocatedPct += pct;
+                                    if (pct > 0) {
+                                        Asset fund = assets.stream().filter(a -> fundId.equals(a.getAssetType())).findFirst().orElse(null);
+                                        if (fund == null) {
+                                            fund = Asset.builder().user(user).name(fundId).assetType(fundId).currentValue(0.0).build();
                                         }
                                         fund.setCurrentValue(fund.getCurrentValue() + (projectedSavings * (pct / 100.0)));
                                         assetRepository.save(fund);
@@ -198,11 +242,7 @@ public class AutomatedSavingsScheduler {
                         record.setDate(today);
                         transactionRepository.save(record);
 
-                        Notification notification = new Notification();
-                        notification.setUserId(user.getId());
-                        notification.setType("STATEMENT_VERIFICATION");
-                        notification.setContent("Your new savings cycle has started. Please verify last month's exact savings by uploading your bank statement in the Expense Management dashboard.");
-                        notificationRepository.save(notification);
+
                     }
                 }
             } catch (Exception e) {

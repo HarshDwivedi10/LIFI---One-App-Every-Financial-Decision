@@ -51,7 +51,7 @@ public class ReconciliationService {
                 .collect(Collectors.toList());
                 
         double manualExpenses = monthTransactions.stream()
-                .filter(t -> "EXPENSE".equals(t.getType()) || "DEBIT".equals(t.getType()))
+                .filter(t -> t.getType() == Transaction.TransactionType.EXPENSE || t.getType() == Transaction.TransactionType.DEBIT)
                 .mapToDouble(Transaction::getAmount)
                 .sum();
                 
@@ -60,9 +60,8 @@ public class ReconciliationService {
         // 2. Calculate Actual Savings based on user-verified inputs
         double actualSavings = Math.max(0, req.getVerifiedIncome() - req.getVerifiedExpense());
         
-        // 3. Find Total Deficit (if they saved less than projected)
+        // 3. Find Total Deficit (positive = they saved less than projected, negative = they saved more)
         double totalDeficit = projectedSavings - actualSavings;
-        if (totalDeficit < 0) totalDeficit = 0; // if they saved more, no deficit penalty
         
         // 4. Fetch or Create Verification Record
         MonthlyStatementVerification verification = verificationRepository
@@ -101,55 +100,68 @@ public class ReconciliationService {
         // will naturally incorporate this Verification record.
         
         // 6. Adjust Funds (Assets) by the delta
-        List<Asset> userAssets = assetRepository.findByUserId(user.getId());
-        double totalWealth = userAssets.stream().mapToDouble(Asset::getCurrentValue).sum();
-        
-        if (totalWealth > 0 && deltaDeficit != 0) {
-            for (Asset asset : userAssets) {
-                double proportion = asset.getCurrentValue() / totalWealth;
-                double adjustment = deltaDeficit * proportion;
-                
-                double newValue = Math.max(0, asset.getCurrentValue() - adjustment);
-                asset.setCurrentValue(newValue);
-                assetRepository.save(asset);
-            }
+        if (deltaDeficit < 0) { // Surplus
+            double surplusAmount = Math.abs(deltaDeficit);
+            Asset unalloc = assetRepository.findByUserId(user.getId()).stream()
+                    .filter(a -> "UNALLOCATED".equals(a.getAssetType()))
+                    .findFirst()
+                    .orElseGet(() -> Asset.builder().user(user).name("Unallocated Savings").assetType("UNALLOCATED").currentValue(0.0).build());
+            
+            unalloc.setCurrentValue(unalloc.getCurrentValue() + surplusAmount);
+            assetRepository.save(unalloc);
             result.put("fundsAdjusted", true);
-        } else {
-            result.put("fundsAdjusted", false);
-        }
-        
-        // 7. Evaluate Goals and Push Target Dates if there's a positive deficit
-        int delayedGoalsCount = 0;
-        if (deltaDeficit > 0) {
-            List<Goal> userGoals = goalRepository.findByUserId(user.getId());
-            for (Goal goal : userGoals) {
-                Asset mappedCorpus = userAssets.stream()
-                        .filter(a -> a.getAssetType() != null && (a.getAssetType().equals(goal.getCategory()) || a.getAssetType().contains(goal.getCategory().replace("_", " "))))
-                        .findFirst()
-                        .orElse(null);
-                        
-                if (mappedCorpus != null && goal.getMonthlyAllocation() != null && goal.getMonthlyAllocation() > 0) {
-                    long currentMonthsRemaining = ChronoUnit.MONTHS.between(LocalDate.now(), goal.getTargetDate());
-                    if (currentMonthsRemaining <= 0) currentMonthsRemaining = 1;
+            result.put("surplusAdded", surplusAmount);
+            result.put("delayedGoalsCount", 0);
+            
+        } else if (deltaDeficit > 0) { // Deficit
+            String targetFundId = req.getSelectedDeficitFundId();
+            if (targetFundId == null || targetFundId.isEmpty()) {
+                targetFundId = "UNALLOCATED"; // fallback
+            }
+            
+            final String finalTarget = targetFundId;
+            Asset targetAsset = assetRepository.findByUserId(user.getId()).stream()
+                    .filter(a -> a.getAssetType() != null && a.getAssetType().equals(finalTarget))
+                    .findFirst()
+                    .orElse(null);
                     
-                    double projectedBalanceByTarget = mappedCorpus.getCurrentValue() + (goal.getMonthlyAllocation() * currentMonthsRemaining);
-                    
-                    if (projectedBalanceByTarget < goal.getCost()) {
-                        double shortfall = goal.getCost() - projectedBalanceByTarget;
-                        int extraMonthsNeeded = (int) Math.ceil(shortfall / goal.getMonthlyAllocation());
-                        
-                        if (extraMonthsNeeded > 0) {
-                            goal.setTargetDate(goal.getTargetDate().plusMonths(extraMonthsNeeded));
-                            goal.setIsDelayed(true);
-                            goal.setAcknowledged(false);
-                            goalRepository.save(goal);
-                            delayedGoalsCount++;
+            if (targetAsset != null) {
+                targetAsset.setCurrentValue(Math.max(0, targetAsset.getCurrentValue() - deltaDeficit));
+                assetRepository.save(targetAsset);
+                result.put("fundsAdjusted", true);
+                
+                // 7. Evaluate Goal and Push Target Date if the targeted fund is a goal
+                int delayedGoalsCount = 0;
+                List<Goal> userGoals = goalRepository.findByUserId(user.getId());
+                for (Goal goal : userGoals) {
+                    if (goal.getCategory().equals(targetAsset.getAssetType()) || targetAsset.getAssetType().contains(goal.getCategory().replace("_", " "))) {
+                        if (goal.getMonthlyAllocation() != null && goal.getMonthlyAllocation() > 0) {
+                            long currentMonthsRemaining = ChronoUnit.MONTHS.between(LocalDate.now(), goal.getTargetDate());
+                            if (currentMonthsRemaining <= 0) currentMonthsRemaining = 1;
+                            
+                            double projectedBalanceByTarget = targetAsset.getCurrentValue() + (goal.getMonthlyAllocation() * currentMonthsRemaining);
+                            
+                            if (projectedBalanceByTarget < goal.getCost()) {
+                                double shortfall = goal.getCost() - projectedBalanceByTarget;
+                                int extraMonthsNeeded = (int) Math.ceil(shortfall / goal.getMonthlyAllocation());
+                                
+                                if (extraMonthsNeeded > 0) {
+                                    goal.setTargetDate(goal.getTargetDate().plusMonths(extraMonthsNeeded));
+                                    goal.setIsDelayed(true);
+                                    goal.setAcknowledged(false);
+                                    goalRepository.save(goal);
+                                    delayedGoalsCount++;
+                                }
+                            }
                         }
                     }
                 }
+                result.put("delayedGoalsCount", delayedGoalsCount);
+            } else {
+                result.put("fundsAdjusted", false);
+                result.put("delayedGoalsCount", 0);
             }
         }
-        result.put("delayedGoalsCount", delayedGoalsCount);
         
         return result;
     }

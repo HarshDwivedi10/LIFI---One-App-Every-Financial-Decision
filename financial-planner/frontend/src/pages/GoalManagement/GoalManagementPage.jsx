@@ -1,566 +1,619 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../services/api';
+import toast from 'react-hot-toast';
+import useFinancialData from '../../hooks/useFinancialData';
 import { numberToIndianWords } from '../../utils/numberToWords';
-
-const DEFAULT_FUNDS = [
-  { id: 'RETIREMENT', name: 'Retirement Corpus', percent: 0, isLocked: true },
-  { id: 'LONG_TERM', name: 'Long-Term Goal Corpus', percent: 25, isLocked: false },
-  { id: 'SHORT_TERM', name: 'Short-Term Goal Corpus', percent: 15, isLocked: false },
-  { id: 'EMERGENCY', name: 'Emergency & Protection Corpus', percent: 15, isLocked: false },
-  { id: 'WEALTH', name: 'Wealth Creation Corpus', percent: 5, isLocked: false }
-];
+import { runWaterfallSimulation } from '../../utils/simulationEngine';
 
 export default function GoalManagementPage() {
-  const [loading, setLoading] = useState(true);
-  
-  // Base Financials
-  const [totalSavings, setTotalSavings] = useState(0); 
-  const [corpuses, setCorpuses] = useState({});
-  const [fundsList, setFundsList] = useState([]);
-  const [activeTab, setActiveTab] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const editId = queryParams.get('editId');
 
-  // Goals State
-  const [goals, setGoals] = useState([]);
-  
-  // UI State
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newGoal, setNewGoal] = useState({ name: '', cost: '', category: '', targetDate: '' });
-  
-  // Off-Track Resolution State
-  const [resolutionState, setResolutionState] = useState(null); 
+  const {
+    loading,
+    expectedMonthlySavings,
+    allocations,
+    metadata,
+    funds,
+    preExistingSavings,
+    preExistingSavingsDate,
+  } = useFinancialData();
 
-  // Simulator State
-  const [simulatorState, setSimulatorState] = useState(null);
-  
+  const [fundName, setFundName] = useState('');
+  const [targetAmount, setTargetAmount] = useState('');
+  const [targetDate, setTargetDate] = useState('');
+
+  const [simulationResult, setSimulationResult] = useState(null);
+  const [impactAnalysis, setImpactAnalysis] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [injectAmount, setInjectAmount] = useState(0);
+
+  const unallocatedFund = funds.find(f => f.id === 'UNALLOCATED');
+  const unallocatedBalance = unallocatedFund ? (unallocatedFund.storedAssetBalance || 0) : 0;
+
   useEffect(() => {
-    fetchBaseline();
-  }, []);
-
-  const fetchBaseline = async () => {
-    try {
-      const [fundBalRes, goalsRes] = await Promise.all([
-        api.get('/user/fund-balances').catch(() => ({ data: { funds: [] } })),
-        api.get('/goals').catch(() => ({ data: [] }))
-      ]);
-
-      const fundData = fundBalRes.data || {};
-      const funds = fundData.funds || [];
-
-      setTotalSavings(fundData.expectedMonthlySavings || 0);
-
-      const corpusMap = {};
-      funds.forEach(f => {
-        corpusMap[f.id] = {
-          name: f.name,
-          balance: f.balance,
-          percent: f.percent,
-          monthlyAlloc: f.monthlyAlloc
-        };
-      });
-
-      setFundsList(funds);
-      setCorpuses(corpusMap);
-
-      if (funds.length > 0) {
-        if (!newGoal.category) setNewGoal(prev => ({ ...prev, category: funds[0].id }));
-        setActiveTab(prev => prev || funds[0].id);
+    if (!loading && editId) {
+      const fund = funds.find(f => f.id === editId);
+      if (fund) {
+        const meta = metadata[fund.id] || {};
+        setFundName(fund.name);
+        setTargetAmount(meta.targetAmount ? meta.targetAmount.toString() : '');
+        setTargetDate(meta.targetDate || '');
       }
-
-      setGoals(goalsRes.data || []);
-      setLoading(false);
-    } catch (error) {
-      console.error("Failed to load financials", error);
-      setLoading(false);
     }
-  };
+  }, [loading, editId, funds, metadata]);
 
-  const getMonthsFromNow = (months) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + months);
-    return d.toISOString().split('T')[0];
-  };
-
-  const getMonthsBetween = (date1, date2) => {
-    const d1 = new Date(date1);
-    const d2 = new Date(date2);
-    let months = (d2.getFullYear() - d1.getFullYear()) * 12;
-    months -= d1.getMonth();
-    months += d2.getMonth();
-    return months <= 0 ? 1 : months;
-  };
-
-  const evaluateGoal = (goal) => {
-    const months = getMonthsBetween(new Date(), goal.targetDate);
-    const cost = parseFloat(goal.cost);
-    const corpus = corpuses[goal.category];
+  useEffect(() => {
+    if (!fundName.trim() || !targetAmount || !targetDate) {
+      setSimulationResult(null);
+      setImpactAnalysis([]);
+      return;
+    }
     
-    // Future Cash Flow Evaluation
-    // 1. Current balance available for NEW goals (ignoring existing reserved goals for simplicity in this V1)
-    const availableByTarget = corpus.balance + (corpus.monthlyAlloc * months);
-    
-    if (availableByTarget >= cost) {
-      // ON TRACK
-      const newGoalObj = { ...goal, monthlyAllocation: cost / months };
-      api.post('/goals', newGoalObj).then(res => {
-        setGoals([...goals, res.data]);
-        setShowAddModal(false);
-        setNewGoal({ name: '', cost: '', category: fundsList[0]?.id || '', targetDate: '' });
-      }).catch(err => console.error("Failed to save goal", err));
-    } else {
-      // OFF TRACK
-      const shortfall = cost - availableByTarget;
-      
-      // Option A: Increase Monthly Savings
-      const extraMonthly = shortfall / months;
-      
-      // Option B: Redistribute Existing Savings
-      // Total monthly allocated to all goals + new goal
-      const totalSavingsForGoals = goals.reduce((sum, g) => sum + g.monthlyAllocation, 0) + corpus.monthlyAlloc; 
-      
-      const allActiveGoals = [...goals, { ...goal, id: 'temp_new' }];
-      const totalCostNeeded = allActiveGoals.reduce((sum, g) => sum + parseFloat(g.cost), 0);
-      
-      const redistributedGoals = allActiveGoals.map(g => {
-        const proportionalShare = parseFloat(g.cost) / totalCostNeeded;
-        const newAlloc = totalSavingsForGoals * proportionalShare;
-        const oldMonths = getMonthsBetween(new Date(), g.targetDate);
-        const newMonths = Math.ceil(parseFloat(g.cost) / newAlloc);
-        const delay = Math.max(0, newMonths - oldMonths);
-        
+    const newTargetAmt = parseFloat(targetAmount);
+    if (newTargetAmt <= 0) {
+      setSimulationResult(null);
+      setImpactAnalysis([]);
+      return;
+    }
+
+    const activeFundId = editId || 'NEW_FUND';
+
+    // Build existing goals list (excluding the one being edited)
+    const existingGoals = funds
+      .filter(f => f.id !== 'UNALLOCATED' && f.id !== activeFundId)
+      .map(f => {
+        const meta = metadata[f.id] || {};
         return {
-          ...g,
-          oldAlloc: g.monthlyAllocation || 0,
-          newAlloc: newAlloc,
-          delay: delay
+          id: f.id,
+          name: f.name,
+          targetAmount: meta.targetAmount || 0,
+          targetDate: meta.targetDate || '2099-12-31',
+          balance: f.storedAssetBalance || 0
         };
-      });
+      })
+      .filter(g => g.targetAmount > 0);
 
-      setResolutionState({
-        status: 'OFF_TRACK',
-        shortfall,
-        optionA: { extraMonthly },
-        optionB: { redistributedGoals }
+    // ── BASELINE run: without the new goal ────────────────────────────────
+    const baseline = runWaterfallSimulation(existingGoals, expectedMonthlySavings);
+
+    // ── FULL run: with the new goal ───────────────────────────────────────
+    const newGoalEntry = {
+      id: activeFundId,
+      name: fundName.trim(),
+      targetAmount: newTargetAmt,
+      targetDate: targetDate,
+      balance: editId ? (funds.find(f => f.id === editId)?.storedAssetBalance || 0) : injectAmount
+    };
+    const allGoals = [...existingGoals, newGoalEntry];
+    const full = runWaterfallSimulation(allGoals, expectedMonthlySavings);
+
+    // ── Feasibility of the NEW goal itself ────────────────────────────────
+    const fullProj = full.projectedDates[activeFundId];
+    const deadlineMs = new Date(targetDate).getTime();
+    const newGoalBalanceAtDeadline = full.balancesAtDeadline[activeFundId] ?? (full.balances[activeFundId] || 0);
+    
+    // It's only feasible if it reaches the target by or before the deadline
+    const isFeasible = !!(fullProj && new Date(fullProj + '-01').getTime() <= deadlineMs);
+    const shortfall = isFeasible ? 0 : Math.max(0, newTargetAmt - newGoalBalanceAtDeadline);
+    let monthsNeeded = 0;
+    let met = false;
+    Object.keys(full.timeline).sort().forEach(mk => {
+      if (!met) {
+        const pct = full.timeline[mk][activeFundId] || 0;
+        if (pct > 0 || !met) monthsNeeded++;
+        if ((full.balances[activeFundId] || 0) >= newTargetAmt && !met) met = true;
+      }
+    });
+
+    setSimulationResult({
+      timeline: full.timeline,
+      isFeasible,
+      shortfall,
+      monthsNeeded,
+      activeFundId
+    });
+
+    // ── Impact Analysis on EXISTING goals ─────────────────────────────────
+    if (!editId) {
+      const impacts = [];
+      existingGoals.forEach(g => {
+        const baselineProj = baseline.projectedDates[g.id];
+        const fullProj     = full.projectedDates[g.id];
+        const baselineMet  = (baseline.balances[g.id] || 0) >= g.targetAmount;
+        const fullMet      = (full.balances[g.id] || 0)     >= g.targetAmount;
+        const deadlineMs   = new Date(g.targetDate).getTime();
+
+        const baselineFeasible = baselineMet &&
+          baselineProj && new Date(baselineProj + '-01').getTime() <= deadlineMs;
+        const fullFeasible = fullMet &&
+          fullProj && new Date(fullProj + '-01').getTime() <= deadlineMs;
+
+        if (baselineFeasible && !fullFeasible) {
+          // RED: was feasible, now broken
+          // Shortfall = how much was MISSING at the original deadline month
+          const balAtDeadline = full.balancesAtDeadline[g.id] ?? (full.balances[g.id] || 0);
+          const shortfallAmt = Math.max(0, g.targetAmount - balAtDeadline);
+          let newProjLabel = 'Unknown';
+          if (fullProj) {
+            const d = new Date(fullProj + '-01');
+            newProjLabel = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+          }
+          const origDate = new Date(g.targetDate);
+          const origLabel = origDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+          let delayMonths = 0;
+          if (fullProj) {
+            const fp = new Date(fullProj + '-01');
+            delayMonths = (fp.getFullYear() - origDate.getFullYear()) * 12 + (fp.getMonth() - origDate.getMonth());
+          }
+          impacts.push({ type: 'INFEASIBLE', name: g.name, shortfallAmt, newProjLabel, origLabel, delayMonths });
+        } else if (baselineFeasible && fullFeasible) {
+          // Check for CONTRIBUTION PAUSE: any month where full alloc < baseline alloc by > 10%
+          let pausedMonths = [];
+          Object.keys(full.timeline).sort().forEach(mk => {
+            const baseAlloc  = (baseline.timeline[mk]?.[g.id] || 0);
+            const fullAlloc  = (full.timeline[mk]?.[g.id] || 0);
+            const bothActive = baseAlloc > 1 || fullAlloc > 0;
+            if (bothActive && fullAlloc < baseAlloc - 5) {
+              const d = new Date(mk + '-01');
+              pausedMonths.push(d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }));
+            }
+          });
+          if (pausedMonths.length > 0) {
+            const targetLabel = new Date(g.targetDate).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+            impacts.push({ type: 'PAUSED', name: g.name, pausedMonths, targetLabel });
+          }
+        }
       });
+      setImpactAnalysis(impacts);
+    } else {
+      setImpactAnalysis([]);
     }
-  };
 
-  const applyOptionB = async () => {
+  }, [fundName, targetAmount, targetDate, funds, metadata, editId, expectedMonthlySavings, injectAmount]);
+
+  const handleSave = async () => {
+    if (!simulationResult) {
+      toast.error('Please run the simulation first.');
+      return;
+    }
+    if (!fundName.trim() || !targetAmount || !targetDate) {
+      toast.error('Please fill all fields.');
+      return;
+    }
+
     try {
-      const updatedGoals = [];
-      for (const g of resolutionState.optionB.redistributedGoals) {
-        const d = new Date(g.targetDate);
-        d.setMonth(d.getMonth() + g.delay);
-        const payload = {
-          name: g.name,
-          cost: g.cost,
-          category: g.category,
-          targetDate: d.toISOString().split('T')[0],
-          monthlyAllocation: g.newAlloc
-        };
-        
-        if (g.id === 'temp_new') {
-          const res = await api.post('/goals', payload);
-          updatedGoals.push(res.data);
-        } else {
-          const res = await api.put(`/goals/${g.id}`, payload);
-          updatedGoals.push(res.data);
+      setIsSaving(true);
+      
+      let fundId = editId;
+      if (!fundId) {
+        fundId = 'FUND_' + fundName.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_') + '_' + Date.now();
+        await api.post('/assets', {
+          name: fundName.trim(),
+          assetType: fundId,
+          currentValue: 0.0,
+          fundAllocations: '[]'
+        });
+      } else {
+        const editingFund = funds.find(f => f.id === editId);
+        if (editingFund && editingFund.assetId) {
+          let newValue = editingFund.storedAssetBalance || 0;
+          const target = parseFloat(targetAmount);
+          let overflow = 0;
+          if (newValue > target) {
+              overflow = newValue - target;
+              newValue = target;
+          }
+
+          await api.put(`/assets/${editingFund.assetId}`, {
+            name: fundName.trim(),
+            assetType: fundId,
+            currentValue: newValue,
+            fundAllocations: '[]'
+          });
+
+          if (overflow > 0) {
+              const unalloc = funds.find(f => f.id === 'UNALLOCATED');
+              if (unalloc && unalloc.assetId) {
+                 await api.put(`/assets/${unalloc.assetId}`, {
+                    name: unalloc.name,
+                    assetType: 'UNALLOCATED',
+                    currentValue: (unalloc.storedAssetBalance || 0) + overflow,
+                    fundAllocations: '[]'
+                 });
+              } else {
+                 await api.post(`/assets`, {
+                    name: 'Unallocated Savings',
+                    assetType: 'UNALLOCATED',
+                    currentValue: overflow,
+                    fundAllocations: '[]'
+                 });
+              }
+          }
         }
       }
       
-      setGoals(updatedGoals);
-      setResolutionState(null);
-      setShowAddModal(false);
-      setNewGoal({ name: '', cost: '', category: fundsList[0]?.id || '', targetDate: '' });
+      // Update metadata (slider requiredMonthlyContrib is no longer relevant, we use timeline)
+      const updatedMetadata = { 
+        ...metadata, 
+        [fundId]: {
+            targetAmount: parseFloat(targetAmount),
+            targetDate: targetDate,
+            monthsRemaining: simulationResult.monthsNeeded
+        } 
+      };
+
+      // We need to map the timeline keys to use the new fundId if it was a NEW_FUND
+      const finalTimeline = {};
+      Object.keys(simulationResult.timeline).forEach(m => {
+          finalTimeline[m] = { ...simulationResult.timeline[m] };
+          if (finalTimeline[m]['NEW_FUND'] !== undefined) {
+              finalTimeline[m][fundId] = finalTimeline[m]['NEW_FUND'];
+              delete finalTimeline[m]['NEW_FUND'];
+          }
+      });
+      
+      // Merge with existing timeline from saved settings to keep past months, but overwrite all future
+      let existingSettings = {};
+      try {
+          const res = await api.get('/user/settings');
+          if (res.data.fundAllocationsJson) {
+              existingSettings = JSON.parse(res.data.fundAllocationsJson);
+          }
+      } catch(e) {}
+      
+      const newTimeline = { ...(existingSettings._timeline || {}) };
+      
+      // Wipe all future months from old timeline to prevent stale trailing data
+      const currentDateKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      Object.keys(newTimeline).forEach(m => {
+          if (m >= currentDateKey) {
+              delete newTimeline[m];
+          }
+      });
+      
+      // Insert the freshly calculated comprehensive finalTimeline
+      Object.keys(finalTimeline).forEach(m => {
+          newTimeline[m] = finalTimeline[m];
+      });
+
+      await api.put('/user/settings', {
+        manualTotalSavings: preExistingSavings,
+        preExistingSavingsDate: preExistingSavingsDate,
+        fundAllocationsJson: JSON.stringify({
+          ...allocations, // keep old static allocations just in case of fallback
+          _timeline: newTimeline,
+          _metadata: updatedMetadata
+        })
+      });
+
+      if (!editId && injectAmount > 0) {
+         await api.post('/assets/transfer', {
+            sourceFund: 'UNALLOCATED',
+            destinationFund: fundId,
+            amount: injectAmount
+         });
+      }
+
+      toast.success(editId ? `"${fundName.trim()}" updated successfully!` : 'New goal created successfully!');
+      navigate('/fund-management');
     } catch (err) {
-      console.error("Failed to apply option B", err);
+      toast.error('Failed to save goal.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  if (loading) return <div style={{ padding: '40px', color: 'white' }}>Loading Goal Engine...</div>;
+  const minTargetDate = new Date().toISOString().split('T')[0];
 
-  const getTimerText = (targetDateStr) => {
-    const today = new Date();
-    const target = new Date(targetDateStr);
-    
-    let months = (target.getFullYear() - today.getFullYear()) * 12;
-    months -= today.getMonth();
-    months += target.getMonth();
-    
-    let days = target.getDate() - today.getDate();
-    if (days < 0) {
-      months--;
-      const prevMonth = new Date(target.getFullYear(), target.getMonth(), 0);
-      days += prevMonth.getDate();
-    }
-    
-    if (months < 0) return "Target date passed";
-    if (months === 0 && days === 0) return "Due today";
-    
-    return `${months > 0 ? months + 'm ' : ''}${days > 0 ? days + 'd' : ''} remaining`;
-  };
+  if (loading) {
+    return <div style={{ color: '#fff', padding: '2rem' }}>Loading Goal Planner...</div>;
+  }
 
   return (
-    <div style={{ padding: '24px 32px', width: '100%', maxWidth: '100%', margin: '0 auto', fontFamily: 'var(--font-sans)', color: 'white' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <div>
-          <h1 style={{ fontSize: '32px', margin: '0 0 8px 0', color: 'var(--text-primary)' }}>Goal Planning</h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Future cash flow forecasting approach.</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => {
-          setNewGoal({ name: '', cost: '', category: fundsList[0]?.id || '', targetDate: '' });
-          setShowAddModal(true);
-        }}>+ Add New Goal</button>
-      </div>
-
-      {/* NOTIFICATION BANNER */}
-      {goals.filter(g => g.isDelayed && !g.acknowledged).length > 0 && (
-        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #F59E0B', padding: '16px 24px', borderRadius: '12px', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ color: '#F59E0B' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: '1.5rem', color: '#ffffff',
+      fontFamily: 'var(--font-sans, inherit)', width: '100%', maxWidth: '1200px', margin: '0 auto'
+    }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+        <div style={{ background: 'rgba(17, 19, 32, 0.85)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '20px', padding: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1.1rem', margin: 0, fontWeight: 600 }}>Goal Requirements</h2>
+            <button onClick={() => navigate('/fund-management')} style={{ background: 'none', border: 'none', color: '#8B8C9A', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+              Cancel
+            </button>
           </div>
-          <div>
-            <h3 style={{ margin: '0 0 4px 0', color: '#F59E0B', fontSize: '16px' }}>Goals Delayed Due to Savings Deficit</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '14px' }}>
-              Your recent bank statement indicated lower savings than projected. 
-              {goals.filter(g => g.isDelayed && !g.acknowledged).length} goal(s) have had their target dates automatically adjusted. 
-              Please acknowledge the changes below.
+
+          {/* Priority Explanation Card */}
+          <div style={{ marginBottom: '20px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <h4 style={{ margin: 0, fontSize: '13px', color: '#60A5FA', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              How Priority Works
+            </h4>
+            <p style={{ margin: 0, fontSize: '13px', color: '#93C5FD', lineHeight: '1.5' }}>
+              Goals are prioritized on the basis of <strong>Target Date</strong>. Goals with earlier deadlines are always funded first, while later goals will be impacted if monthly savings are limited.
             </p>
           </div>
-        </div>
-      )}
-
-
-
-      {/* 5 HORIZONTAL FUND CARDS */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', 
-        gap: '16px', 
-        marginBottom: '28px',
-        width: '100%' 
-      }}>
-        {fundsList.filter(f => f.id !== 'UNALLOCATED').map(fund => {
-          const isActive = activeTab === fund.id;
-          const fundColors = {
-            'RETIREMENT': { color: '#818CF8', border: 'rgba(129, 140, 248, 0.4)', bg: 'rgba(129, 140, 248, 0.1)' },
-            'LONG_TERM': { color: '#10B981', border: 'rgba(16, 185, 129, 0.4)', bg: 'rgba(16, 185, 129, 0.1)' },
-            'SHORT_TERM': { color: '#3B82F6', border: 'rgba(59, 130, 246, 0.4)', bg: 'rgba(59, 130, 246, 0.1)' },
-            'EMERGENCY': { color: '#F97316', border: 'rgba(249, 115, 22, 0.4)', bg: 'rgba(249, 115, 22, 0.1)' },
-            'WEALTH': { color: '#EAB308', border: 'rgba(234, 179, 8, 0.4)', bg: 'rgba(234, 179, 8, 0.1)' }
-          };
-          const styleConfig = fundColors[fund.id] || { color: '#6366F1', border: 'rgba(99, 102, 241, 0.4)', bg: 'rgba(99, 102, 241, 0.1)' };
-
-          return (
-            <div 
-              key={fund.id}
-              onClick={() => setActiveTab(fund.id)}
-              style={{
-                background: isActive ? styleConfig.bg : 'rgba(255, 255, 255, 0.03)',
-                border: `1.5px solid ${isActive ? styleConfig.color : 'rgba(255, 255, 255, 0.08)'}`,
-                boxShadow: isActive ? `0 0 16px ${styleConfig.border}` : 'none',
-                borderRadius: '12px',
-                padding: '16px 14px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                flexDirection: 'column',
-                justify: 'space-between'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ 
-                  fontSize: '11px', 
-                  fontWeight: 700, 
-                  color: styleConfig.color,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em'
-                }}>
-                  {fund.name.replace(' Corpus', '')}
-                </span>
-                <span style={{ 
-                  fontSize: '10px', 
-                  background: 'rgba(255,255,255,0.08)', 
-                  padding: '2px 6px', 
-                  borderRadius: '8px', 
-                  color: 'var(--text-muted)',
-                  fontWeight: 600
-                }}>
-                  {fund.percent}%
-                </span>
-              </div>
-
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#34D399', marginBottom: '4px' }}>
-                ₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(fund.balance || 0)}
-              </div>
-
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                +₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(fund.monthlyAlloc || 0)}<span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>/mo</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ACTIVE TAB CONTENT */}
-      {activeTab && (
-        <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--border-subtle)', padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-             <div>
-               <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: 'var(--text-primary)' }}>
-                 {fundsList.find(f => f.id === activeTab)?.name} Goals
-               </h3>
-               <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
-                 Money Saved Until Now: <strong style={{color: 'var(--success)', fontSize: '18px'}}>₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(corpuses[activeTab]?.balance || 0)}</strong>
-               </p>
-             </div>
-             <button 
-                className="btn btn-primary" 
-                style={{ padding: '8px 16px', background: 'rgba(99,102,241,0.1)', color: 'var(--accent-primary)' }} 
-                onClick={() => {
-                  setNewGoal({ name: '', cost: '', category: activeTab, targetDate: '' });
-                  setShowAddModal(true);
-                }}
-              >
-                + Add Goal Here
-              </button>
-          </div>
           
-          {goals.filter(g => g.category === activeTab).length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', border: '1px dashed var(--border-subtle)', borderRadius: '8px' }}>
-              No goals assigned to this fund yet.
+          {unallocatedBalance > 0 && (
+            <div style={{ background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.2)', color: '#34D399', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, marginBottom: '20px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M17 12h.01"/><path d="M7 12h.01"/></svg>
+              Available Unallocated Savings: ₹{new Intl.NumberFormat('en-IN').format(unallocatedBalance)}
             </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-              {goals.filter(g => g.category === activeTab).map(g => (
-                <div key={g.id} style={{ 
-                  background: 'rgba(255,255,255,0.03)', 
+          )}
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Goal Name</label>
+            <input type="text" value={fundName} onChange={e => { setFundName(e.target.value); }} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '16px', padding: '14px', borderRadius: '8px', outline: 'none', boxSizing: 'border-box' }} placeholder="e.g. New Car" />
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target Amount (₹)</label>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <span style={{ fontSize: '20px', color: '#8B8C9A' }}>₹</span>
+              <input type="number" min="1" value={targetAmount} onChange={e => { setTargetAmount(e.target.value); }} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid #232533', color: '#fff', fontSize: '16px', padding: '14px', borderRadius: '8px', outline: 'none' }} placeholder="e.g. 1500000" />
+            </div>
+            {targetAmount && parseFloat(targetAmount) > 0 && (
+              <div style={{ fontSize: '12px', color: '#10B981', marginTop: '6px', fontWeight: 500 }}>
+                {numberToIndianWords(parseFloat(targetAmount))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginBottom: impactAnalysis.length > 0 ? '16px' : '30px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#8B8C9A', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target Date</label>
+            <input
+              type="date"
+              min={minTargetDate}
+              value={targetDate}
+              onChange={e => {
+                const val = e.target.value;
+                if (val && val < minTargetDate) {
+                  toast.error('Target date cannot be in the past. Please choose a future date.');
+                } else {
+                  setTargetDate(val);
+                }
+              }}
+              style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: `1px solid ${targetDate && targetDate < minTargetDate ? '#EF4444' : '#232533'}`, color: '#fff', fontSize: '16px', padding: '14px', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', colorScheme: 'dark' }}
+            />
+          </div>
+
+          {/* ── Impact Analysis Panel ─────────────────────────────── */}
+          {simulationResult && !editId && (
+            <div style={{ marginBottom: '24px' }}>
+              {impactAnalysis.length === 0 ? (
+                <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '18px' }}>✅</span>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#34D399' }}>No Impact on Existing Goals</div>
+                    <div style={{ fontSize: '12px', color: '#6B7280', marginTop: '2px' }}>All your current goals remain on schedule.</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '11px', color: '#8B8C9A', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '2px' }}>Impact on Existing Goals</div>
+                  {impactAnalysis.map((impact, idx) => (
+                    impact.type === 'INFEASIBLE' ? (
+                      <div key={idx} style={{ background: 'rgba(239, 68, 68, 0.07)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <div>
+                          <div style={{ fontSize: '14px', fontWeight: 700, color: '#F87171', marginBottom: '6px' }}>{impact.name} — Target Compromised</div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.5' }}>
+                            Allocating funds here leaves <strong style={{ color: '#D1D5DB' }}>{impact.name}</strong> short by{' '}
+                            <strong style={{ color: '#FCA5A5' }}>₹{new Intl.NumberFormat('en-IN').format(Math.round(impact.shortfallAmt))}</strong>{' '}
+                            on its original deadline of {impact.origLabel}.
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#FCA5A5', marginTop: '10px', padding: '8px 12px', background: 'rgba(239,68,68,0.1)', borderRadius: '6px', display: 'inline-block' }}>
+                            New projected completion: <strong style={{ color: '#FCA5A5' }}>{impact.newProjLabel}</strong>
+                            {impact.delayMonths > 0 && <span style={{ color: '#9CA3AF' }}> (+{impact.delayMonths} months)</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={idx} style={{ background: 'rgba(251, 191, 36, 0.06)', border: '1px solid rgba(251, 191, 36, 0.25)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <div>
+                          <div style={{ fontSize: '14px', fontWeight: 700, color: '#FCD34D', marginBottom: '6px' }}>{impact.name} — Contributions Paused</div>
+                          <div style={{ fontSize: '13px', color: '#9CA3AF', lineHeight: '1.5' }}>
+                            Savings for <strong style={{ color: '#D1D5DB' }}>{impact.name}</strong> will be{' '}
+                            <strong style={{ color: '#FCD34D' }}>paused</strong> for{' '}
+                            <strong style={{ color: '#D1D5DB' }}>{impact.pausedMonths.length} month{impact.pausedMonths.length > 1 ? 's' : ''}</strong>{' '}
+                            ({impact.pausedMonths.slice(0, 3).join(', ')}{impact.pausedMonths.length > 3 ? '…' : ''})
+                            {' '}to prioritize this new goal.
+                          </div>
+                          <div style={{ fontSize: '12px', marginTop: '10px', padding: '8px 12px', background: 'rgba(16,185,129,0.08)', borderRadius: '6px', display: 'inline-block', color: '#34D399' }}>
+                            {impact.name} will still be achieved on time by {impact.targetLabel}.
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+
+          {/* Retirement Planning Button */}
+          <div style={{ marginTop: '16px' }}>
+             <button 
+               onClick={() => navigate('/retirement-planner')}
+               style={{
+                 width: '100%',
+                 background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)',
+                 border: '1px solid rgba(139, 92, 246, 0.3)',
+                 color: '#C4B5FD',
+                 padding: '16px',
+                 borderRadius: '12px',
+                 fontSize: '15px',
+                 fontWeight: 600,
+                 cursor: 'pointer',
+                 display: 'flex',
+                 justifyContent: 'space-between',
+                 alignItems: 'center',
+                 transition: 'all 0.2s',
+               }}
+               onMouseEnter={e => {
+                 e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%)';
+               }}
+               onMouseLeave={e => {
+                 e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)';
+               }}
+             >
+               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                 <div style={{ background: 'rgba(139, 92, 246, 0.2)', padding: '8px', borderRadius: '8px', display: 'flex' }}>
+                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                 </div>
+                 <span>Plan Your Retirement</span>
+               </div>
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+             </button>
+          </div>
+        </div>
+
+        <div style={{ background: 'rgba(17, 19, 32, 0.85)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column' }}>
+          <h2 style={{ fontSize: '1.1rem', margin: '0 0 1.5rem 0', fontWeight: 600 }}>Schedule Breakdown</h2>
+
+          {!simulationResult && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748B', textAlign: 'center' }}>
+              <p>Enter details on the left to see the automated schedule.</p>
+            </div>
+          )}
+
+          {simulationResult && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: '100%' }}>
+              <div style={{ padding: '20px', borderRadius: '12px', background: simulationResult.isFeasible ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)', border: `1px solid ${simulationResult.isFeasible ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}` }}>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <div style={{ fontSize: '24px' }}>{simulationResult.isFeasible ? '✅' : '⚠️'}</div>
+                  <div style={{ flex: 1 }}>
+                    {simulationResult.isFeasible ? (
+                      <>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#34D399' }}>Goal is Feasible</h3>
+                        <p style={{ margin: 0, color: '#D1D5DB', lineHeight: '1.5' }}>
+                          This goal integrates perfectly into your waterfall schedule.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#F87171' }}>Not feasible as planned</h3>
+                        <p style={{ margin: 0, color: '#D1D5DB', lineHeight: '1.5' }}>
+                          Even routing all available bandwidth, you will fall short by <span style={{ color: '#FCA5A5', fontWeight: 600 }}>₹{new Intl.NumberFormat('en-IN').format(Math.round(simulationResult.shortfall || 0))}</span> on the target date.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {((!simulationResult.isFeasible && simulationResult.shortfall > 0 && unallocatedBalance > 0 && injectAmount === 0) || injectAmount > 0) && !editId && (
+                <div style={{ padding: '16px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" style={{ marginTop: '2px' }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', color: '#60A5FA', fontWeight: 600 }}>Smart Suggestion</h3>
+                      <p style={{ margin: 0, color: '#93C5FD', fontSize: '13px', lineHeight: '1.5' }}>
+                        {injectAmount > 0 
+                          ? (simulationResult.isFeasible 
+                              ? `Injecting ₹${new Intl.NumberFormat('en-IN').format(injectAmount)} from Unallocated Savings made this goal feasible.`
+                              : `Injecting ₹${new Intl.NumberFormat('en-IN').format(injectAmount)} from Unallocated Savings reduced the shortfall, but it is still not feasible.`)
+                          : `You have ₹${new Intl.NumberFormat('en-IN').format(unallocatedBalance)} in Unallocated Savings. Inject ₹${new Intl.NumberFormat('en-IN').format(Math.min(unallocatedBalance, simulationResult.shortfall))} upfront to ${unallocatedBalance >= simulationResult.shortfall ? 'hit your target date.' : 'reduce your shortfall.'}`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      if (injectAmount > 0) {
+                        setInjectAmount(0);
+                      } else {
+                        setInjectAmount(Math.min(unallocatedBalance, simulationResult.shortfall));
+                      }
+                    }}
+                    style={{
+                      background: injectAmount > 0 ? 'rgba(59, 130, 246, 0.2)' : '#3B82F6',
+                      color: injectAmount > 0 ? '#93C5FD' : '#fff',
+                      border: injectAmount > 0 ? '1px solid rgba(59, 130, 246, 0.4)' : 'none',
+                      padding: '10px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      width: '100%',
+                      marginTop: '4px'
+                    }}
+                  >
+                    {injectAmount > 0 ? 'Remove Smart Injection' : `Use Unallocated Savings (Inject ₹${new Intl.NumberFormat('en-IN').format(Math.min(unallocatedBalance, simulationResult.shortfall))})`}
+                  </button>
+                </div>
+              )}
+
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#8B8C9A', textTransform: 'uppercase' }}>Projected Timeline for this Goal</h4>
+                {(() => {
+                   let totalRupees = 0;
+                   const renderedItems = Object.keys(simulationResult.timeline).map(monthKey => {
+                     const pct = simulationResult.timeline[monthKey][simulationResult.activeFundId] || 0;
+                     if (pct === 0) return null;
+                     
+                     const dateObj = new Date(monthKey + '-01');
+                     const monthName = dateObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+                     const rupees = Math.round(expectedMonthlySavings * (pct / 100));
+                     totalRupees += rupees;
+                     
+                     return (
+                       <div key={monthKey} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid #232533', alignItems: 'center' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 500 }}>{monthName}</span>
+                          <div style={{ textAlign: 'right' }}>
+                             <div style={{ color: '#34D399', fontWeight: 600, fontSize: '15px' }}>₹{new Intl.NumberFormat('en-IN').format(rupees)}</div>
+                             <div style={{ color: '#818CF8', fontSize: '12px' }}>{pct.toFixed(1)}% of savings</div>
+                          </div>
+                       </div>
+                     );
+                   });
+                   
+                   return (
+                     <>
+                       {renderedItems}
+                       {totalRupees > 0 && (
+                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.3)', alignItems: 'center', marginTop: '8px' }}>
+                           <span style={{ fontSize: '14px', fontWeight: 600, color: '#34D399', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Accumulated</span>
+                           <span style={{ fontSize: '18px', fontWeight: 700, color: '#34D399' }}>₹{new Intl.NumberFormat('en-IN').format(totalRupees)}</span>
+                         </div>
+                       )}
+                     </>
+                   );
+                })()}
+              </div>
+
+              <button 
+                onClick={handleSave} 
+                disabled={isSaving || !simulationResult.isFeasible} 
+                style={{ 
+                  marginTop: 'auto', 
+                  background: (isSaving || !simulationResult.isFeasible) ? 'rgba(255,255,255,0.05)' : '#10B981', 
+                  color: (isSaving || !simulationResult.isFeasible) ? '#6B7280' : '#fff', 
+                  border: 'none', 
                   padding: '16px', 
                   borderRadius: '8px', 
-                  border: `1px solid ${g.isDelayed && !g.acknowledged ? '#F59E0B' : 'var(--border-subtle)'}`,
-                  position: 'relative'
-                }}>
-                  <div style={{ position: 'absolute', top: '-10px', right: '12px', background: 'rgba(16,185,129,0.1)', color: 'var(--success)', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600, border: '1px solid rgba(16,185,129,0.2)' }}>
-                    ⏱ {getTimerText(g.targetDate)}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', marginTop: '4px' }}>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)' }}>{g.name}</h4>
-                      {g.isDelayed && !g.acknowledged && (
-                        <span style={{ fontSize: '11px', background: 'rgba(245,158,11,0.2)', color: '#F59E0B', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>Target Delayed</span>
-                      )}
-                    </div>
-                    <button 
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if(window.confirm('Are you sure you want to remove this goal?')) {
-                          try {
-                            await api.delete(`/goals/${g.id}`);
-                            setGoals(goals.filter(goal => goal.id !== g.id));
-                          } catch (err) {
-                            console.error('Failed to delete goal', err);
-                          }
-                        }
-                      }}
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: '4px', transition: 'color 0.2s' }}
-                      onMouseOver={(e) => e.currentTarget.style.color = 'var(--danger)'}
-                      onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
-                      title="Remove Goal"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Target Cost:</span>
-                    <span style={{ fontWeight: 600 }}>₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(g.cost)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Monthly Alloc:</span>
-                    <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(g.monthlyAllocation)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '14px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Target Date:</span>
-                    <span style={{ fontWeight: 600, color: g.isDelayed && !g.acknowledged ? '#F59E0B' : 'inherit' }}>{new Date(g.targetDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
-                  </div>
-                  
-                  {g.isDelayed && !g.acknowledged ? (
-                    <button 
-                      className="btn btn-primary" 
-                      style={{ width: '100%', padding: '6px', fontSize: '12px', background: 'rgba(245,158,11,0.2)', color: '#F59E0B', borderColor: '#F59E0B' }} 
-                      onClick={async () => {
-                        try {
-                          const res = await api.put(`/goals/${g.id}/acknowledge`);
-                          setGoals(goals.map(goal => goal.id === g.id ? res.data : goal));
-                        } catch (err) {
-                          console.error("Failed to acknowledge", err);
-                        }
-                      }}
-                    >
-                      Acknowledge Delay
-                    </button>
-                  ) : (
-                    <button className="btn btn-secondary" style={{ width: '100%', padding: '6px', fontSize: '12px' }} onClick={() => setSimulatorState(g)}>
-                      Simulate Purchase
-                    </button>
-                  )}
-                </div>
-              ))}
+                  fontSize: '16px', 
+                  fontWeight: 700, 
+                  cursor: (isSaving || !simulationResult.isFeasible) ? 'not-allowed' : 'pointer', 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  boxShadow: (isSaving || !simulationResult.isFeasible) ? 'none' : '0 4px 12px rgba(16, 185, 129, 0.3)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {isSaving ? 'Saving...' : (editId ? 'Save Schedule' : 'Confirm & Automate Schedule')}
+              </button>
             </div>
           )}
         </div>
-      )}
-
-      {/* ADD GOAL MODAL */}
-      {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#1a1a1a', padding: '32px', borderRadius: '16px', width: '500px', border: '1px solid #333' }}>
-            <h2 style={{ marginTop: 0 }}>Create Goal</h2>
-            <div className="form-group">
-              <label className="form-label">Goal Name</label>
-              <input className="form-input" value={newGoal.name} onChange={e => setNewGoal({...newGoal, name: e.target.value})} placeholder="e.g. Headphones" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Estimated Cost</label>
-              <input type="number" className="form-input" value={newGoal.cost} onChange={e => setNewGoal({...newGoal, cost: e.target.value})} placeholder="0" />
-              {newGoal.cost && <div className="input-words-hint">{numberToIndianWords(newGoal.cost)}</div>}
-            </div>
-            <div className="form-group">
-              <label className="form-label">Assign to Fund</label>
-              <select className="form-select" value={newGoal.category} onChange={e => setNewGoal({...newGoal, category: e.target.value})}>
-                {fundsList.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Target Purchase Date</label>
-              <input type="date" className="form-input" value={newGoal.targetDate} onChange={e => setNewGoal({...newGoal, targetDate: e.target.value})} />
-            </div>
-            
-            <div style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
-              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddModal(false)}>Cancel</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => evaluateGoal(newGoal)}>Evaluate Feasibility</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* RESOLUTION MODAL */}
-      {resolutionState && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }}>
-          <div style={{ background: '#1e1e1e', padding: '32px', borderRadius: '16px', width: '800px', border: '1px solid var(--danger)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ background: 'rgba(239,68,68,0.2)', padding: '12px', borderRadius: '50%', color: 'var(--danger)' }}></div>
-              <h2 style={{ margin: 0, color: 'var(--danger)' }}>Goal Off-Track</h2>
-            </div>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
-              Based on your current savings and planned financial commitments, sufficient funds will not be available by {newGoal.targetDate}. You are short by <strong>₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(resolutionState.shortfall)}</strong>. 
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-              {/* Option A */}
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
-                <h3 style={{ margin: '0 0 16px 0', color: 'var(--text-primary)' }}>Option A: Increase Savings</h3>
-                <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px' }}>
-                  Keep all existing goals on schedule by injecting additional cash flow into this corpus.
-                </p>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--success)', marginBottom: '24px' }}>
-                  + ₹{new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(resolutionState.optionA.extraMonthly)} <span style={{fontSize: '14px', fontWeight: 400}}>/ month</span>
-                </div>
-                <button className="btn btn-secondary" style={{ width: '100%', borderColor: 'var(--success)', color: 'var(--success)' }}>
-                  Commit to Increase
-                </button>
-              </div>
-
-              {/* Option B */}
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
-                <h3 style={{ margin: '0 0 16px 0', color: 'var(--text-primary)' }}>Option B: Redistribute Savings</h3>
-                <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                  Maintain your current total savings of ₹{new Intl.NumberFormat('en-IN').format(goals.reduce((s,g)=>s+g.monthlyAllocation,0) + corpuses[newGoal.category]?.monthlyAlloc)} and restructure allocations.
-                </p>
-                
-                <table style={{ width: '100%', fontSize: '12px', textAlign: 'left', borderCollapse: 'collapse', marginBottom: '24px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #444', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '8px 0' }}>Goal</th>
-                      <th>Old Alloc</th>
-                      <th>New Alloc</th>
-                      <th>Impact</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resolutionState.optionB.redistributedGoals.map(g => (
-                      <tr key={g.id} style={{ borderBottom: '1px solid #333' }}>
-                        <td style={{ padding: '8px 0', fontWeight: g.id === 'temp_new' ? 700 : 400 }}>{g.name}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>₹{Math.round(g.oldAlloc)}</td>
-                        <td style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>₹{Math.round(g.newAlloc)}</td>
-                        <td style={{ color: g.delay > 0 ? 'var(--warning)' : 'var(--success)' }}>
-                          {g.delay > 0 ? `Delayed by ${g.delay}M` : 'On Track'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <button className="btn btn-primary" style={{ width: '100%' }} onClick={applyOptionB}>
-                  Confirm Redistribution
-                </button>
-              </div>
-            </div>
-            
-            <button className="btn btn-ghost" style={{ marginTop: '24px', width: '100%' }} onClick={() => setResolutionState(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* SIMULATOR MODAL */}
-      {simulatorState && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1002 }}>
-          <div style={{ background: '#1a1a1a', padding: '32px', borderRadius: '16px', width: '600px', border: '1px solid #444' }}>
-            <h2 style={{ marginTop: 0, marginBottom: '8px' }}>Immediate Purchase Simulator</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-              Simulating the purchase of <strong>{simulatorState.name}</strong> for <strong>₹{new Intl.NumberFormat('en-IN').format(simulatorState.cost)}</strong> right now.
-            </p>
-
-            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '12px', borderLeft: '4px solid var(--accent-primary)', marginBottom: '24px' }}>
-              <h4 style={{ margin: '0 0 12px 0', color: 'var(--accent-primary)' }}>Configurable Funding Priority</h4>
-              <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>Funds will be drained in this sequence until the cost is met.</p>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ padding: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>1. {corpuses[simulatorState.category]?.name || simulatorState.category} (Primary)</span>
-                  <span style={{ color: 'var(--success)' }}>₹{new Intl.NumberFormat('en-IN').format(corpuses[simulatorState.category]?.balance || 0)} available</span>
-                </div>
-                {corpuses['WEALTH'] && simulatorState.category !== 'WEALTH' && (
-                  <div style={{ padding: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid #333', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>2. {corpuses['WEALTH'].name}</span>
-                    <span style={{ color: 'var(--success)' }}>₹{new Intl.NumberFormat('en-IN').format(corpuses['WEALTH'].balance)} available</span>
-                  </div>
-                )}
-                {corpuses['EMERGENCY'] && simulatorState.category !== 'EMERGENCY' && (
-                  <div style={{ padding: '12px', background: 'rgba(0,0,0,0.3)', border: '1px dashed var(--warning)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--warning)' }}>3. {corpuses['EMERGENCY'].name} (Warning)</span>
-                    <span style={{ color: 'var(--success)' }}>₹{new Intl.NumberFormat('en-IN').format(corpuses['EMERGENCY'].balance)} available</span>
-                  </div>
-                )}
-                {corpuses['RETIREMENT'] && simulatorState.category !== 'RETIREMENT' && (
-                  <div style={{ padding: '12px', background: 'rgba(0,0,0,0.3)', border: '1px dashed var(--danger)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--danger)' }}>4. {corpuses['RETIREMENT'].name} (Critical)</span>
-                    <span style={{ color: 'var(--success)' }}>₹{new Intl.NumberFormat('en-IN').format(corpuses['RETIREMENT'].balance)} available</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSimulatorState(null)}>Close</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { alert('Simulation Execute Logic Here (Future Update)'); setSimulatorState(null); }}>
-                Run Simulation
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      </div>
     </div>
   );
 }

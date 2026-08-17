@@ -99,6 +99,7 @@ function IncomeModal({ existing, onSave, onClose }) {
 
 export default function StepIncome({ data, onChange }) {
   const [incomeModal, setIncomeModal] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const handleSaveIncome = (source) => {
     let updated;
@@ -113,6 +114,7 @@ export default function StepIncome({ data, onChange }) {
 
   const handleDelete = (id) => {
     onChange(data.filter(d => d.id !== id));
+    setDeletingId(null);
   };
 
   return (
@@ -143,7 +145,6 @@ export default function StepIncome({ data, onChange }) {
           <div className="em-list">
             {data.length === 0 ? (
               <div className="em-empty-state">
-                <div className="em-empty-icon">💰</div>
                 <p>No income sources yet.</p>
                 <button className="em-btn em-btn-success" onClick={() => setIncomeModal('new')}>
                   Add Your First Income Source
@@ -173,7 +174,14 @@ export default function StepIncome({ data, onChange }) {
                       </div>
                       <div className="em-item-actions">
                         <button className="em-action-btn em-edit-btn" onClick={() => setIncomeModal(src)}><EditIcon /></button>
-                        <button className="em-action-btn em-delete-btn" onClick={() => handleDelete(src.id)}><TrashIcon /></button>
+                        {deletingId === src.id ? (
+                          <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                            <button className="em-action-btn" style={{ color: '#10B981', background: 'none' }} onClick={() => handleDelete(src.id)}>✔️</button>
+                            <button className="em-action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeletingId(null)}>✖️</button>
+                          </div>
+                        ) : (
+                          <button className="em-action-btn em-delete-btn" onClick={() => setDeletingId(src.id)}><TrashIcon /></button>
+                        )}
                       </div>
                     </div>
                   </div>

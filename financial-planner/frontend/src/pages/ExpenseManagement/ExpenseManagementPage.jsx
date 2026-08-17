@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../../services/api';
 import './ExpenseManagement.css';
 import toast from 'react-hot-toast';
+import useFinancialData from '../../hooks/useFinancialData';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const PlusIcon  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -222,92 +223,301 @@ function ExpenseModal({ existing, onSave, onClose }) {
   );
 }
 
-// ─── Confirm Delete ────────────────────────────────────────────────────────────
+// ─── Confirm Delete (Removed popup, using inline) ────────────────────────────────────────────────────────────
 function ConfirmDelete({ label, onConfirm, onClose }) {
-  return (
-    <div className="em-modal-overlay" onClick={onClose}>
-      <div className="em-modal em-modal-sm" onClick={e => e.stopPropagation()}>
-        <div className="em-modal-header">
-          <h3>Confirm Delete</h3>
-          <button className="em-modal-close" onClick={onClose}><CloseIcon /></button>
-        </div>
-        <div className="em-modal-body">
-          <p style={{ color:'var(--text-secondary)', margin:0 }}>
-            Are you sure you want to delete <strong style={{ color:'var(--text-primary)' }}>{label}</strong>? This cannot be undone.
-          </p>
-        </div>
-        <div className="em-modal-footer">
-          <button className="em-btn em-btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="em-btn em-btn-danger" onClick={onConfirm}>Delete</button>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 }
 
-// ─── Reconciliation Modal (CSV Verification) ──────────────────────────────────
-function ReconciliationModal({ previewData, manualIncome, manualExpense, monthLabel, onSave, onClose }) {
+// ─── Reconciliation Modal (2-Step Savings Verification) ──────────────────────────────────
+function ReconciliationModal({ initialData, manualIncome, manualExpense, monthLabel, year, month, funds = [], onSave, onClose }) {
+  const [step, setStep] = useState(1);
+  const [parsing, setParsing] = useState(false);
+  const [parsedData, setParsedData] = useState(initialData || { csvIncome: 0, csvExpense: 0, transactions: [] });
   const [form, setForm] = useState({
-    verifiedIncome: previewData.csvIncome || 0,
-    verifiedExpense: previewData.csvExpense || 0
+    verifiedIncome: initialData?.verifiedIncome ?? initialData?.csvIncome ?? 0,
+    verifiedExpense: initialData?.verifiedExpense ?? initialData?.csvExpense ?? 0,
+    selectedDeficitFundId: ''
   });
 
+  const fileInputRef = useState(null);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.csv') && !name.endsWith('.pdf')) {
+      toast.error('Only PDF and CSV bank statements are accepted.');
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      setParsing(true);
+      const res = await api.post(`/transactions/parse-csv-preview?year=${year}&month=${month}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setParsedData(res.data);
+      setForm(prev => ({
+        ...prev,
+        verifiedIncome: res.data.csvIncome || 0,
+        verifiedExpense: res.data.csvExpense || 0
+      }));
+      toast.success(`Parsed ${res.data.totalCount || res.data.transactions?.length || 0} transactions!`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to parse bank statement file.');
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const projectedSavings = Math.max(0, manualIncome - manualExpense);
+  const actualSavings = Math.max(0, parseFloat(form.verifiedIncome || 0) - parseFloat(form.verifiedExpense || 0));
+  const totalDeficit = projectedSavings - actualSavings;
+
   const handleSave = () => {
+    if (totalDeficit > 0 && !form.selectedDeficitFundId) {
+      toast.error('Please select a fund to cover the shortfall.');
+      return;
+    }
     onSave({
       verifiedIncome: parseFloat(form.verifiedIncome) || 0,
       verifiedExpense: parseFloat(form.verifiedExpense) || 0,
-      csvIncome: previewData.csvIncome,
-      csvExpense: previewData.csvExpense
+      csvIncome: parsedData.csvIncome || 0,
+      csvExpense: parsedData.csvExpense || 0,
+      selectedDeficitFundId: form.selectedDeficitFundId
     });
   };
 
   return (
     <div className="em-modal-overlay" onClick={onClose}>
-      <div className="em-modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+      <div className="em-modal verify-modal-container" onClick={e => e.stopPropagation()}>
+        
+        {/* Modal Header */}
         <div className="em-modal-header">
-          <h3>Statement Verification - {monthLabel}</h3>
+          <h3>Verify Your Savings — {monthLabel}</h3>
           <button className="em-modal-close" onClick={onClose}><CloseIcon /></button>
         </div>
-        <div className="em-modal-body">
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 16px 0' }}>
-            Compare your manually entered application data with the parsed CSV data. You can adjust the parsed numbers below if necessary before verifying.
-          </p>
-          <div style={{ display: 'flex', gap: '24px' }}>
-            {/* Manual App Data */}
-            <div style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Manual App Data</h4>
-              <div style={{ marginBottom: '12px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Income</div>
-                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--success-color)' }}>₹{manualIncome}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Expenses</div>
-                <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--danger-color)' }}>₹{manualExpense}</div>
-              </div>
-            </div>
 
-            {/* CSV Parsed Data (Editable) */}
-            <div style={{ flex: 1, padding: '16px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '8px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '12px', textTransform: 'uppercase', color: '#818cf8' }}>Parsed CSV Data</h4>
-              <div className="em-field-group" style={{ marginBottom: '12px' }}>
-                <label>Verified Income (₹)</label>
-                <input type="number" min="0" value={form.verifiedIncome} onChange={e => setForm({...form, verifiedIncome: e.target.value})} />
-              </div>
-              <div className="em-field-group" style={{ marginBottom: '0' }}>
-                <label>Verified Expense (₹)</label>
-                <input type="number" min="0" value={form.verifiedExpense} onChange={e => setForm({...form, verifiedExpense: e.target.value})} />
-              </div>
-            </div>
+        {/* 2-Step Indicator */}
+        <div className="verify-step-indicator">
+          <div className={`verify-step-item ${step === 1 ? 'active' : 'completed'}`} onClick={() => setStep(1)}>
+            <div className="verify-step-num">1</div>
+            <span>Upload &amp; Extract Statement</span>
+          </div>
+          <div className="verify-step-divider" />
+          <div className={`verify-step-item ${step === 2 ? 'active' : ''}`} onClick={() => setStep(2)}>
+            <div className="verify-step-num">2</div>
+            <span>Reconcile &amp; Discrepancy</span>
           </div>
         </div>
-        <div className="em-modal-footer">
-          <button className="em-btn em-btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="em-btn em-btn-primary" onClick={handleSave}>Verify & Save</button>
-        </div>
+
+        {step === 1 ? (
+          <>
+            <div className="em-modal-body" style={{ gap: '20px' }}>
+              
+              {/* Statement Upload Dropzone */}
+              <label className="statement-dropzone">
+                <input 
+                  type="file" 
+                  accept=".csv,.pdf" 
+                  style={{ display: 'none' }} 
+                  onChange={handleFileUpload} 
+                  disabled={parsing}
+                />
+                <div className="statement-dropzone-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </div>
+                <div className="statement-dropzone-title">
+                  {parsing ? 'Extracting transactions...' : 'Upload Bank Statement (CSV or PDF)'}
+                </div>
+                <div className="statement-dropzone-subtitle">
+                  Auto-detects credits (income) and debits (expenses). Click or drag file here.
+                </div>
+              </label>
+
+              {/* Extraction Summary Cards */}
+              <div className="extraction-grid">
+                <div className="extraction-card extraction-card-income">
+                  <div className="extraction-card-header">
+                    <span className="extraction-card-title">Verified Income (Credits)</span>
+                    <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>Deposits</span>
+                  </div>
+                  <div className="extraction-card-input">
+                    <span>₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.verifiedIncome}
+                      onChange={e => setForm({ ...form, verifiedIncome: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Total money credited this month
+                  </span>
+                </div>
+
+                <div className="extraction-card extraction-card-expense">
+                  <div className="extraction-card-header">
+                    <span className="extraction-card-title">Verified Expense (Debits)</span>
+                    <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600 }}>Withdrawals</span>
+                  </div>
+                  <div className="extraction-card-input">
+                    <span>₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.verifiedExpense}
+                      onChange={e => setForm({ ...form, verifiedExpense: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Total money debited this month
+                  </span>
+                </div>
+              </div>
+
+              {/* Extracted Transactions Preview Table */}
+              {parsedData.transactions && parsedData.transactions.length > 0 && (
+                <div className="parsed-txns-section">
+                  <div className="parsed-txns-header">
+                    <span>Detected Statement Transactions</span>
+                    <span style={{ opacity: 0.7 }}>{parsedData.transactions.length} entries</span>
+                  </div>
+                  <div className="parsed-txns-list">
+                    {parsedData.transactions.map((tx, idx) => (
+                      <div key={idx} className="parsed-txn-row">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                          <span className={`parsed-txn-tag ${tx.type === 'INCOME' || tx.type === 'CREDIT' ? 'parsed-tag-credit' : 'parsed-tag-debit'}`}>
+                            {tx.type === 'INCOME' || tx.type === 'CREDIT' ? 'CR' : 'DR'}
+                          </span>
+                          <span className="parsed-txn-desc" title={tx.description}>{tx.description}</span>
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginRight: '16px' }}>{tx.date}</span>
+                        <span className={`parsed-txn-amt ${tx.type === 'INCOME' || tx.type === 'CREDIT' ? 'parsed-amt-credit' : 'parsed-amt-debit'}`}>
+                          {tx.type === 'INCOME' || tx.type === 'CREDIT' ? '+' : '-'}₹{new Intl.NumberFormat('en-IN').format(tx.amount || 0)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            <div className="em-modal-footer">
+              <button className="em-btn em-btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="em-btn em-btn-primary" onClick={() => setStep(2)}>
+                <span>Evaluate Discrepancy &amp; Continue →</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="em-modal-body" style={{ gap: '20px' }}>
+              
+              {/* Comparison Grid: Manual vs Verified */}
+              <div className="comparison-grid">
+                <div className="comparison-box">
+                  <div className="comparison-box-title">Manual App Plan</div>
+                  <div className="comparison-metric">
+                    <span style={{ color: 'var(--text-muted)' }}>Planned Income</span>
+                    <span style={{ color: '#10b981', fontWeight: 600 }}>₹{new Intl.NumberFormat('en-IN').format(manualIncome)}</span>
+                  </div>
+                  <div className="comparison-metric">
+                    <span style={{ color: 'var(--text-muted)' }}>Planned Expenses</span>
+                    <span style={{ color: '#ef4444', fontWeight: 600 }}>₹{new Intl.NumberFormat('en-IN').format(manualExpense)}</span>
+                  </div>
+                  <div className="comparison-metric">
+                    <span>Projected Savings</span>
+                    <span style={{ color: '#818cf8', fontWeight: 700 }}>₹{new Intl.NumberFormat('en-IN').format(projectedSavings)}</span>
+                  </div>
+                </div>
+
+                <div className="comparison-box" style={{ background: 'rgba(99, 102, 241, 0.08)', borderColor: 'rgba(99, 102, 241, 0.25)' }}>
+                  <div className="comparison-box-title" style={{ color: '#818cf8' }}>Bank Statement Actuals</div>
+                  <div className="comparison-metric">
+                    <span style={{ color: 'var(--text-muted)' }}>Verified Income</span>
+                    <span style={{ color: '#10b981', fontWeight: 600 }}>₹{new Intl.NumberFormat('en-IN').format(form.verifiedIncome || 0)}</span>
+                  </div>
+                  <div className="comparison-metric">
+                    <span style={{ color: 'var(--text-muted)' }}>Verified Expenses</span>
+                    <span style={{ color: '#ef4444', fontWeight: 600 }}>₹{new Intl.NumberFormat('en-IN').format(form.verifiedExpense || 0)}</span>
+                  </div>
+                  <div className="comparison-metric">
+                    <span>Actual Net Savings</span>
+                    <span style={{ color: '#818cf8', fontWeight: 700 }}>₹{new Intl.NumberFormat('en-IN').format(actualSavings)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Discrepancy Evaluation Outcome */}
+              {totalDeficit < 0 ? (
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
+                  <div style={{ color: '#10B981', fontSize: '18px', fontWeight: 700, marginBottom: '6px' }}>
+                    Surplus Detected
+                  </div>
+                  <p style={{ color: '#ffffff', fontSize: '14px', lineHeight: '1.5', margin: 0 }}>
+                    You saved <strong>₹{new Intl.NumberFormat('en-IN').format(Math.abs(totalDeficit))}</strong> more than projected!
+                    This extra money will be automatically swept into your <strong>Unallocated Savings</strong>.
+                  </p>
+                </div>
+              ) : totalDeficit > 0 ? (
+                <div style={{ background: 'rgba(249, 115, 22, 0.08)', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '10px', padding: '16px' }}>
+                  <div style={{ color: '#F97316', fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>
+                    Shortfall Detected
+                  </div>
+                  <p style={{ color: '#ffffff', fontSize: '13px', lineHeight: '1.5', marginBottom: '14px' }}>
+                    You saved <strong>₹{new Intl.NumberFormat('en-IN').format(totalDeficit)}</strong> less than projected. To balance your books, select which fund or goal absorbs this shortfall:
+                  </p>
+                  <div className="em-field-group">
+                    <label style={{ color: '#F97316' }}>Select Fund to Deduct From</label>
+                    <select
+                      value={form.selectedDeficitFundId}
+                      onChange={e => setForm({ ...form, selectedDeficitFundId: e.target.value })}
+                      style={{ width: '100%', padding: '10px 14px', background: 'rgba(17, 19, 32, 0.9)', color: '#ffffff', border: '1px solid rgba(249, 115, 22, 0.4)', borderRadius: '8px' }}
+                    >
+                      <option value="">-- Select a Fund --</option>
+                      {funds && funds.filter(f => f.storedAssetBalance > 0 || f.id === 'UNALLOCATED').map(f => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} (Balance: ₹{new Intl.NumberFormat('en-IN').format(f.storedAssetBalance || 0)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
+                  <div style={{ color: '#818CF8', fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>
+                    Perfect Match
+                  </div>
+                  <p style={{ color: '#ffffff', fontSize: '13px', lineHeight: '1.5', margin: 0 }}>
+                    Your bank statement savings perfectly match your projected savings plan. No fund adjustments needed!
+                  </p>
+                </div>
+              )}
+
+            </div>
+
+            <div className="em-modal-footer">
+              <button className="em-btn em-btn-ghost" onClick={() => setStep(1)}>← Back to Statement</button>
+              <button className="em-btn em-btn-primary" onClick={handleSave}>Confirm &amp; Verify Savings</button>
+            </div>
+          </>
+        )}
+
       </div>
     </div>
   );
 }
+
 
 // ═══════════════════════════════════════════════════════════
 //  MAIN PAGE
@@ -318,6 +528,8 @@ export default function ExpenseManagementPage() {
   const [fixedExpenses, setFixedExpenses]   = useState([]);
   const [loading,       setLoading]         = useState(true);
   const [salaryDay,     setSalaryDay]       = useState(1);
+
+  const { funds } = useFinancialData();
 
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
@@ -558,15 +770,20 @@ export default function ExpenseManagementPage() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file?.name.endsWith('.csv')) { toast.error('Only CSV files accepted.'); return; }
+    if (!file) return;
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.csv') && !name.endsWith('.pdf')) { 
+      toast.error('Only PDF and CSV bank statements are accepted.'); 
+      return; 
+    }
     const fd = new FormData(); fd.append('file', file);
     try {
-      const toastId = toast.loading('Parsing CSV...');
+      const toastId = toast.loading('Parsing bank statement...');
       const res = await api.post('/transactions/parse-csv-preview', fd, { headers:{ 'Content-Type':'multipart/form-data' } });
       toast.dismiss(toastId);
       setReconciliationPreview(res.data);
     } catch (err) {
-      toast.error('Failed to parse CSV.');
+      toast.error('Failed to parse bank statement.');
     }
     e.target.value = '';
   };
@@ -601,47 +818,23 @@ export default function ExpenseManagementPage() {
 
   return (
     <div className="em-page">
-
-      {/* ── PAGE HEADER ── */}
-      <div className="em-page-header">
+      {/* DISCREPANCY INFO BANNER */}
+      <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '12px', padding: '16px', marginBottom: '24px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
         <div>
-          <h1>Financial Control Panel</h1>
-          <p>Monthly income and expense tracking with per-source day-of-credit control.</p>
-        </div>
-        <div className="em-header-actions">
-          {verificationStatus?.isVerified ? (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <div style={{ color: 'var(--success-color)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                Verified
-              </div>
-              <button className="em-btn em-btn-ghost em-btn-sm" onClick={() => setReconciliationPreview({
-                csvIncome: verificationStatus.csvIncome,
-                csvExpense: verificationStatus.csvExpense,
-                verifiedIncome: verificationStatus.verifiedIncome,
-                verifiedExpense: verificationStatus.verifiedExpense
-              })}>
-                View / Edit Changes
-              </button>
-            </div>
-          ) : (
-            <>
-              <button className="em-btn em-btn-ghost em-btn-sm" onClick={() => fileRef.current?.click()}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Verify Savings via Bank Statement
-              </button>
-              <input type="file" ref={fileRef} style={{ display:'none' }} accept=".csv" onChange={handleFileUpload} />
-            </>
-          )}
+          <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#60A5FA', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Discrepancy Auto-Routing</h4>
+          <p style={{ margin: 0, fontSize: '13px', color: '#93C5FD', lineHeight: '1.5' }}>
+            Note: If your verified monthly savings differ from your expected savings (due to extra income or unexpected expenses), the system will detect a discrepancy and automatically apply the difference to your <strong>Unallocated Savings</strong>.
+          </p>
         </div>
       </div>
 
       {/* ── MONTH NAVIGATOR ── */}
-      <div className="em-month-strip">
+      <div className="em-month-strip" style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <button className="em-month-nav-btn" onClick={goPrevMonth}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <div style={{ textAlign:'center' }}>
+        <div style={{ textAlign:'center', margin: '0 2rem' }}>
           <h2 className="em-month-label">{formatMonth(currentDate)}</h2>
           {isFuture && <span className="em-month-tag em-tag-future">Future</span>}
           {isCurrent && <span className="em-month-tag em-tag-current">Current Month</span>}
@@ -650,6 +843,46 @@ export default function ExpenseManagementPage() {
         <button className="em-month-nav-btn" onClick={goNextMonth}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
+
+        <div style={{ position: 'absolute', right: '1.5rem' }}>
+          {verificationStatus?.isVerified ? (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ color: 'var(--success-color)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Verified
+              </div>
+              <button 
+                className="em-btn em-btn-ghost em-btn-sm" 
+                onClick={() => setReconciliationPreview({
+                  csvIncome: verificationStatus.csvIncome,
+                  csvExpense: verificationStatus.csvExpense,
+                  verifiedIncome: verificationStatus.verifiedIncome,
+                  verifiedExpense: verificationStatus.verifiedExpense
+                })}
+              >
+                View Verification
+              </button>
+            </div>
+          ) : (
+            <button 
+              className="em-btn em-btn-ghost em-btn-sm" 
+              onClick={() => setReconciliationPreview({
+                csvIncome: 0,
+                csvExpense: 0,
+                verifiedIncome: 0,
+                verifiedExpense: 0,
+                transactions: []
+              })}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Verify Your Savings
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── SUMMARY PILLS ── */}
@@ -657,6 +890,7 @@ export default function ExpenseManagementPage() {
         <div className="em-summary-pill em-pill-income">
           <div className="em-pill-label">Total Income</div>
           <div className="em-pill-value">{formatMoney(incomeForMonth)}</div>
+          <div className="em-pill-note" style={{ color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>All money arriving this month</div>
           {isCurrent && pendingIncomeSources.length > 0 && (
             <div className="em-pill-note">+{formatMoney(pendingIncomeSources.reduce((s,i)=>s+(parseFloat(i.amount)||0),0))} arriving soon</div>
           )}
@@ -665,6 +899,7 @@ export default function ExpenseManagementPage() {
         <div className="em-summary-pill em-pill-expense">
           <div className="em-pill-label">Total Expenses</div>
           <div className="em-pill-value">{formatMoney(totalExpenses)}</div>
+          <div className="em-pill-note" style={{ color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>Fixed bills and manual spends</div>
         </div>
         <div className={`em-summary-pill ${netSavings >= 0 ? 'em-pill-savings' : 'em-pill-deficit'}`}>
           <div className="em-pill-label">Net Savings</div>
@@ -685,7 +920,7 @@ export default function ExpenseManagementPage() {
               </div>
               <div>
                 <h3>Income Sources</h3>
-                <p>Recurring monthly income streams</p>
+                <p>Track your recurring salary, rent, and side income.</p>
               </div>
             </div>
             <button className="em-add-btn em-add-income" onClick={() => setIncomeModal('new')}>
@@ -696,7 +931,6 @@ export default function ExpenseManagementPage() {
           <div className="em-list">
             {incomeSources.length === 0 && incomeTransactions.length === 0 ? (
               <div className="em-empty-state">
-                <div className="em-empty-icon">💰</div>
                 <p>No income sources yet.</p>
                 <button className="em-btn em-btn-success" onClick={() => setIncomeModal('new')}>Add Your First Income Source</button>
               </div>
@@ -730,7 +964,14 @@ export default function ExpenseManagementPage() {
                         </div>
                         <div className="em-item-actions">
                           <button className="em-action-btn em-edit-btn" onClick={() => isTxn ? setExpenseModal(item) : setIncomeModal(item.source)}><EditIcon /></button>
-                          <button className="em-action-btn em-delete-btn" onClick={() => isTxn ? setDeleteConfirm({ type:'expense', id:item.id, label:item.description }) : setDeleteConfirm({ type:'income', id:item.originalId, label:item.description||item.category })}><TrashIcon /></button>
+                          {(deleteConfirm?.type === (isTxn ? 'expense' : 'income') && deleteConfirm?.id === (isTxn ? item.id : item.originalId)) ? (
+                            <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                              <button className="em-action-btn" style={{ color: '#10B981', background: 'none' }} onClick={confirmDelete}>✔️</button>
+                              <button className="em-action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeleteConfirm(null)}>✖️</button>
+                            </div>
+                          ) : (
+                            <button className="em-action-btn em-delete-btn" onClick={() => isTxn ? setDeleteConfirm({ type:'expense', id:item.id, label:item.description }) : setDeleteConfirm({ type:'income', id:item.originalId, label:item.description||item.category })}><TrashIcon /></button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -763,7 +1004,14 @@ export default function ExpenseManagementPage() {
                           </div>
                           <div className="em-item-actions">
                             <button className="em-action-btn em-edit-btn" onClick={() => setIncomeModal(src)}><EditIcon /></button>
-                            <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'income', id:src.id, label:src.description||src.type })}><TrashIcon /></button>
+                            {deleteConfirm?.type === 'income' && deleteConfirm?.id === src.id ? (
+                              <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                                <button className="em-action-btn" style={{ color: '#10B981', background: 'none' }} onClick={confirmDelete}>✔️</button>
+                                <button className="em-action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeleteConfirm(null)}>✖️</button>
+                              </div>
+                            ) : (
+                              <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'income', id:src.id, label:src.description||src.type })}><TrashIcon /></button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -795,7 +1043,7 @@ export default function ExpenseManagementPage() {
               </div>
               <div>
                 <h3>Expenses</h3>
-                <p>{formatMonth(currentDate)}</p>
+                <p>Track your monthly bills, subscriptions, and random spends.</p>
               </div>
             </div>
             <div style={{ display:'flex', gap:'8px' }}>
@@ -846,7 +1094,14 @@ export default function ExpenseManagementPage() {
                             <div className="em-item-amount" style={{ color: 'var(--text-muted)' }}>-{formatMoney(item.amount)}</div>
                             <div className="em-item-actions">
                               <button className="em-action-btn em-edit-btn" onClick={() => setFixedExpModal(targetFixedExp)}><EditIcon /></button>
-                              <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'fixedExpense', id:targetFixedExpId, label:item.description||item.category })}><TrashIcon /></button>
+                              {deleteConfirm?.type === 'fixedExpense' && deleteConfirm?.id === targetFixedExpId ? (
+                                <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                                  <button className="em-action-btn" style={{ color: '#10B981', background: 'none' }} onClick={confirmDelete}>✔️</button>
+                                  <button className="em-action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeleteConfirm(null)}>✖️</button>
+                                </div>
+                              ) : (
+                                <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'fixedExpense', id:targetFixedExpId, label:item.description||item.category })}><TrashIcon /></button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -871,7 +1126,14 @@ export default function ExpenseManagementPage() {
                           <div className="em-item-amount em-amount-pending">-{formatMoney(exp.amount)}</div>
                           <div className="em-item-actions">
                             <button className="em-action-btn em-edit-btn" onClick={() => setFixedExpModal(exp)}><EditIcon /></button>
-                            <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'fixedExpense', id:exp.id, label:exp.description||exp.category })}><TrashIcon /></button>
+                            {deleteConfirm?.type === 'fixedExpense' && deleteConfirm?.id === exp.id ? (
+                              <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                                <button className="em-action-btn" style={{ color: '#10B981', background: 'none' }} onClick={confirmDelete}>✔️</button>
+                                <button className="em-action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeleteConfirm(null)}>✖️</button>
+                              </div>
+                            ) : (
+                              <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'fixedExpense', id:exp.id, label:exp.description||exp.category })}><TrashIcon /></button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -906,7 +1168,14 @@ export default function ExpenseManagementPage() {
                         <div className="em-item-amount em-amount-expense">-{formatMoney(txn.amount)}</div>
                         <div className="em-item-actions">
                           <button className="em-action-btn em-edit-btn" onClick={() => setExpenseModal(txn)}><EditIcon /></button>
-                          <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'expense', id:txn.id, label:txn.description||txn.category })}><TrashIcon /></button>
+                          {deleteConfirm?.type === 'expense' && deleteConfirm?.id === txn.id ? (
+                            <div style={{ display: 'flex', gap: '4px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', padding: '2px' }}>
+                              <button className="em-action-btn" style={{ color: '#10B981', background: 'none' }} onClick={confirmDelete}>✔️</button>
+                              <button className="em-action-btn" style={{ color: '#EF4444', background: 'none' }} onClick={() => setDeleteConfirm(null)}>✖️</button>
+                            </div>
+                          ) : (
+                            <button className="em-action-btn em-delete-btn" onClick={() => setDeleteConfirm({ type:'expense', id:txn.id, label:txn.description||txn.category })}><TrashIcon /></button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -924,10 +1193,13 @@ export default function ExpenseManagementPage() {
       {/* ── MODALS ── */}
       {reconciliationPreview && (
         <ReconciliationModal 
-          previewData={reconciliationPreview} 
+          initialData={reconciliationPreview}
+          year={currentDate.getFullYear()}
+          month={currentDate.getMonth() + 1}
           manualIncome={incomeForMonth} 
           manualExpense={totalExpenses}
           monthLabel={formatMonth(currentDate)}
+          funds={funds}
           onSave={handleSaveVerification} 
           onClose={() => setReconciliationPreview(null)} 
         />
@@ -935,7 +1207,6 @@ export default function ExpenseManagementPage() {
       {incomeModal  && <IncomeModal  existing={incomeModal==='new'?null:incomeModal}   onSave={handleSaveIncome}   onClose={() => setIncomeModal(null)}  />}
       {fixedExpModal && <FixedExpenseModal existing={fixedExpModal==='new'?null:fixedExpModal} onSave={handleSaveFixedExpense} onClose={() => setFixedExpModal(null)} />}
       {expenseModal && <ExpenseModal existing={expenseModal==='new'?null:expenseModal} onSave={handleSaveExpense} onClose={() => setExpenseModal(null)} />}
-      {deleteConfirm && <ConfirmDelete label={deleteConfirm.label} onConfirm={confirmDelete} onClose={() => setDeleteConfirm(null)} />}
     </div>
   );
 }

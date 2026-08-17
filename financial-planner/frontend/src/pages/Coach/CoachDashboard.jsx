@@ -185,7 +185,7 @@ export default function CoachDashboard() {
     try {
       setSendingSuggestion(true);
       await coachApi.postSuggestion(selectedUser.id, suggestionText, suggestionCategory);
-      toast.success(`💡 Suggestion published to ${selectedUser.name}'s page!`);
+      toast.success(`Suggestion published to ${selectedUser.name}'s page!`);
       setSuggestionText('');
       setShowSuggestionModal(false);
     } catch (err) {
@@ -226,7 +226,7 @@ export default function CoachDashboard() {
         {/* Clean Navbar Tabs: Direct User Names (Hired Users) + My Profile */}
         <div className="coach-nav-tabs">
           {users.length === 0 ? (
-            <span className="no-users-pill">👥 No Hired Users Yet</span>
+            <span className="no-users-pill">No Hired Users Yet</span>
           ) : (
             users.map(u => (
               <button 
@@ -237,9 +237,9 @@ export default function CoachDashboard() {
                   setActiveTab('website');
                 }}
               >
-                <span>👤 {u.name}</span>
+                <span>{u.name}</span>
                 <span className={`perm-mini-badge ${u.coachPermission === 'READ_WRITE' ? 'rw' : 'ro'}`}>
-                  {u.coachPermission === 'READ_WRITE' ? '✏️ Edit' : '👁️ Read'}
+                  {u.coachPermission === 'READ_WRITE' ? 'Edit' : 'Read'}
                 </span>
               </button>
             ))
@@ -249,7 +249,7 @@ export default function CoachDashboard() {
             className={`coach-tab-btn ${activeTab === 'profile' ? 'active' : ''}`}
             onClick={() => setActiveTab('profile')}
           >
-            📇 My Profile & Card Editor
+            My Profile & Card Editor
           </button>
         </div>
 
@@ -281,10 +281,10 @@ export default function CoachDashboard() {
                 <span className="user-avatar-sm">{selectedUser.name?.charAt(0).toUpperCase()}</span>
                 <div className="user-title-group">
                   <h3>Viewing {selectedUser.name}'s Website</h3>
-                  <span className="user-sub">✉️ {selectedUser.email}</span>
+                  <span className="user-sub">{selectedUser.email}</span>
                 </div>
                 <span className={`perm-tag-lg ${selectedUser.coachPermission === 'READ_WRITE' ? 'rw' : 'ro'}`}>
-                  {selectedUser.coachPermission === 'READ_WRITE' ? '✏️ Read & Edit Access' : '👁️ Read-Only Mode'}
+                  {selectedUser.coachPermission === 'READ_WRITE' ? 'Read & Edit Access' : 'Read-Only Mode'}
                 </span>
               </div>
 
@@ -294,41 +294,41 @@ export default function CoachDashboard() {
                   className={`route-btn ${websiteRoute === 'home' ? 'active' : ''}`}
                   onClick={() => setWebsiteRoute('home')}
                 >
-                  🏠 Home
+                  Home
                 </button>
                 <button 
                   className={`route-btn ${websiteRoute === 'expenses' ? 'active' : ''}`}
                   onClick={() => setWebsiteRoute('expenses')}
                 >
-                  💳 Expenses
+                  Expenses
                 </button>
                 <button 
                   className={`route-btn ${websiteRoute === 'funds' ? 'active' : ''}`}
                   onClick={() => setWebsiteRoute('funds')}
                 >
-                  📊 Funds
+                  Funds
                 </button>
                 <button 
                   className={`route-btn ${websiteRoute === 'goals' ? 'active' : ''}`}
                   onClick={() => setWebsiteRoute('goals')}
                 >
-                  🎯 Goals
+                  Goals
                 </button>
                 <button 
                   className={`route-btn ${websiteRoute === 'retirement' ? 'active' : ''}`}
                   onClick={() => setWebsiteRoute('retirement')}
                 >
-                  🏖️ Retirement
+                  Retirement
                 </button>
               </div>
 
               <div className="topbar-right">
                 <button className="post-sug-btn" onClick={() => setShowSuggestionModal(true)}>
-                  💡 Post Suggestion
+                  Post Suggestion
                 </button>
 
                 <button className="chat-action-btn" onClick={() => handleOpenChat(selectedUser)}>
-                  💬 Chat
+                  Chat
                   {(unreadCounts[selectedUser.id] > 0) && (
                     <span className="unread-badge">
                       {unreadCounts[selectedUser.id] > 99 ? '99+' : unreadCounts[selectedUser.id]}
@@ -341,8 +341,8 @@ export default function CoachDashboard() {
             {/* Granted Permission Notice Banner */}
             <div className={`permission-notice-banner ${selectedUser.coachPermission === 'READ_WRITE' ? 'rw' : 'ro'}`}>
               {selectedUser.coachPermission === 'READ_WRITE'
-                ? `✏️ READ & EDIT PERMISSION GRANTED: You are viewing ${selectedUser.name}'s website. You can edit fields directly.`
-                : `👁️ READ-ONLY PERMISSION GRANTED: You are viewing ${selectedUser.name}'s website in Read-Only mode. Edits are disabled.`}
+                ? `READ & EDIT PERMISSION GRANTED: You are viewing ${selectedUser.name}'s website. You can edit fields directly.`
+                : `READ-ONLY PERMISSION GRANTED: You are viewing ${selectedUser.name}'s website in Read-Only mode. Edits are disabled.`}
             </div>
 
             {/* Actual User Website Page Render */}
@@ -371,7 +371,7 @@ export default function CoachDashboard() {
                 
                 {/* Profile Avatar & Basic Info */}
                 <div className="profile-section-card">
-                  <h3>🖼️ Profile Picture & Basic Info</h3>
+                  <h3>Profile Picture & Basic Info</h3>
                   
                   <div className="avatar-upload-preview">
                     <div className="avatar-circle">
@@ -457,7 +457,7 @@ export default function CoachDashboard() {
 
                 {/* About & Expertise */}
                 <div className="profile-section-card">
-                  <h3>🎯 About Coach & Expertise Areas</h3>
+                  <h3>About Coach & Expertise Areas</h3>
                   
                   <div className="form-group">
                     <label>About Coach (Short Bio)</label>
@@ -482,7 +482,7 @@ export default function CoachDashboard() {
 
                 {/* Resume / CV Section */}
                 <div className="profile-section-card">
-                  <h3>📄 Resume / CV Details & PDF Document</h3>
+                  <h3>Resume / CV Details & PDF Document</h3>
 
                   <div className="form-row dual">
                     <div className="form-group">
@@ -537,11 +537,11 @@ export default function CoachDashboard() {
                     <label>Downloadable Resume File (PDF)</label>
                     <div className="upload-controls">
                       <label className="upload-btn alt">
-                        📁 {profileForm.resumeBase64 ? 'Replace PDF Resume' : 'Upload PDF Resume'}
+                        {profileForm.resumeBase64 ? 'Replace PDF Resume' : 'Upload PDF Resume'}
                         <input type="file" accept="application/pdf" onChange={handleResumeUpload} hidden />
                       </label>
                       {profileForm.resumeBase64 && (
-                        <span className="file-status">✓ PDF Resume Attached</span>
+                        <span className="file-status">PDF Resume Attached</span>
                       )}
                     </div>
                   </div>
@@ -549,7 +549,7 @@ export default function CoachDashboard() {
 
                 <div className="profile-save-bar">
                   <button type="submit" className="save-profile-btn" disabled={profileSaving}>
-                    {profileSaving ? 'Saving Changes...' : '💾 Save Coach Profile & Live Card'}
+                    {profileSaving ? 'Saving Changes...' : 'Save Coach Profile & Live Card'}
                   </button>
                 </div>
               </form>
@@ -563,7 +563,7 @@ export default function CoachDashboard() {
         <div className="modal-overlay" onClick={() => setShowSuggestionModal(false)}>
           <div className="suggestion-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>💡 Publish Suggestion to {selectedUser.name}</h3>
+              <h3>Publish Suggestion to {selectedUser.name}</h3>
               <button className="modal-close" onClick={() => setShowSuggestionModal(false)}>&times;</button>
             </div>
 
@@ -571,12 +571,12 @@ export default function CoachDashboard() {
               <div className="form-group">
                 <label>Category / Topic</label>
                 <select value={suggestionCategory} onChange={e => setSuggestionCategory(e.target.value)}>
-                  <option value="General Advice">💡 General Advice</option>
-                  <option value="Expense Optimization">💰 Expense Optimization</option>
-                  <option value="Goal Management">🎯 Goal Management</option>
-                  <option value="Investment Strategy">📈 Investment Strategy</option>
-                  <option value="Retirement Planning">🏖️ Retirement Planning</option>
-                  <option value="Tax Minimization">🧾 Tax Minimization</option>
+                  <option value="General Advice">General Advice</option>
+                  <option value="Expense Optimization">Expense Optimization</option>
+                  <option value="Goal Management">Goal Management</option>
+                  <option value="Investment Strategy">Investment Strategy</option>
+                  <option value="Retirement Planning">Retirement Planning</option>
+                  <option value="Tax Minimization">Tax Minimization</option>
                 </select>
               </div>
 
@@ -594,7 +594,7 @@ export default function CoachDashboard() {
               <div className="modal-actions">
                 <button type="button" className="cancel-btn" onClick={() => setShowSuggestionModal(false)}>Cancel</button>
                 <button type="submit" className="submit-sug-btn" disabled={sendingSuggestion || !suggestionText.trim()}>
-                  {sendingSuggestion ? 'Publishing...' : `🚀 Publish to ${selectedUser.name}'s Page`}
+                  {sendingSuggestion ? 'Publishing...' : `Publish to ${selectedUser.name}'s Page`}
                 </button>
               </div>
             </form>

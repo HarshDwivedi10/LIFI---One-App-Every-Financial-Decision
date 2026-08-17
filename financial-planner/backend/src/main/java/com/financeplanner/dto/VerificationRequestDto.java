@@ -10,4 +10,5 @@ public class VerificationRequestDto {
     private double verifiedExpense;
     private double csvIncome;
     private double csvExpense;
+    private String selectedDeficitFundId;
 }

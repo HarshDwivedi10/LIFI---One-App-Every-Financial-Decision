@@ -21,6 +21,7 @@ public class IncomeController {
     private final IncomeSourceRepository incomeRepo;
     private final UserRepository userRepository;
     private final UserResolverService userResolverService;
+    private final com.financeplanner.service.SavingsCalculationService savingsCalculationService;
 
     @GetMapping
     public List<IncomeSource> getAll(@AuthenticationPrincipal User user, HttpServletRequest request) {
@@ -33,7 +34,11 @@ public class IncomeController {
         User effectiveUser = userResolverService.getEffectiveUser(user, request);
         User dbUser = userRepository.findById(effectiveUser.getId()).orElse(effectiveUser);
         income.setUser(dbUser);
-        return incomeRepo.save(income);
+        IncomeSource[] saved = new IncomeSource[1];
+        savingsCalculationService.trackDiscrepancyOperation(effectiveUser, "Added an income source", () -> {
+            saved[0] = incomeRepo.save(income);
+        });
+        return saved[0];
     }
 
     @PutMapping("/{id}")
@@ -46,7 +51,11 @@ public class IncomeController {
                     existing.setAmount(updated.getAmount());
                     existing.setDescription(updated.getDescription());
                     existing.setDayOfMonth(updated.getDayOfMonth() != null ? updated.getDayOfMonth() : 1);
-                    return ResponseEntity.ok(incomeRepo.save(existing));
+                    IncomeSource[] saved = new IncomeSource[1];
+                    savingsCalculationService.trackDiscrepancyOperation(effectiveUser, "Modified an income source", () -> {
+                        saved[0] = incomeRepo.save(existing);
+                    });
+                    return ResponseEntity.ok(saved[0]);
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -57,7 +66,9 @@ public class IncomeController {
         return incomeRepo.findById(id)
                 .filter(existing -> existing.getUser().getId().equals(effectiveUser.getId()))
                 .map(existing -> {
-                    incomeRepo.deleteById(id);
+                    savingsCalculationService.trackDiscrepancyOperation(effectiveUser, "Deleted an income source", () -> {
+                        incomeRepo.deleteById(id);
+                    });
                     return ResponseEntity.noContent().<Void>build();
                 })
                 .orElse(ResponseEntity.notFound().build());

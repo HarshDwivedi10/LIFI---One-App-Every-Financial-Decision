@@ -19,11 +19,14 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password });
-      const { token, user: userData } = response.data;
-      setUser(userData);
-      localStorage.setItem('finance_user', JSON.stringify(userData));
+      const { token, user: userData, mustChangePassword } = response.data;
+      // Always store token so subsequent API calls (e.g. change-password) can authenticate
       localStorage.setItem('token', token);
-      return userData;
+      if (!mustChangePassword) {
+        setUser(userData);
+        localStorage.setItem('finance_user', JSON.stringify(userData));
+      }
+      return { ...userData, mustChangePassword };
     } catch (error) {
       console.error('Login failed', error);
       throw error;

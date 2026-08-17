@@ -1,0 +1,251 @@
+.fund-transfer-page {
+  padding: 40px;
+  max-width: 900px;
+  margin: 0 auto;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  background-color: transparent;
+}
+
+.ft-header {
+  margin-bottom: 32px;
+}
+
+.ft-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 10px 0;
+  color: #fff;
+}
+
+.ft-subtitle {
+  color: #9ca3af;
+  font-size: 15px;
+  margin: 0;
+  line-height: 1.5;
+  max-width: 600px;
+}
+
+.ft-card {
+  background: #0B0E14;
+  border: 1px solid #1f2233;
+  border-radius: 12px;
+  padding: 32px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+.ft-flex-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.ft-flex-col {
+  flex: 1;
+}
+
+.ft-form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.ft-form-group label {
+  font-size: 12px;
+  color: #8b8fb6;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.ft-swap-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: #1c1e30;
+  border: 1px solid #2b2e46;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #a5b4fc;
+  margin-top: 24px; /* push down to align with inputs */
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.ft-swap-icon:hover {
+  background: #25283d;
+  border-color: #6366f1;
+  color: #c4b5fd;
+  transform: rotate(180deg);
+}
+
+.ft-amount-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #1f2233;
+  color: #fff;
+  font-size: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  outline: none;
+  box-sizing: border-box;
+  margin-top: 16px;
+}
+
+.ft-amount-input:focus {
+  border-color: #4f46e5;
+  background: #10121a;
+}
+
+.ft-transfer-btn {
+  width: 100%;
+  padding: 18px;
+  background: #312e81; /* Dark purple/blue base */
+  background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 16px rgba(49, 46, 129, 0.4);
+}
+
+.ft-transfer-btn:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(49, 46, 129, 0.6);
+}
+
+.ft-transfer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.ft-balance-preview {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.ft-balance-preview span.highlight {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Success Overlay Animation */
+.ft-success-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 14, 20, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(8px);
+  animation: ftFadeIn 0.3s ease forwards;
+}
+
+.ft-success-card {
+  text-align: center;
+  animation: ftPopIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.ft-success-icon-wrap {
+  width: 80px;
+  height: 80px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  position: relative;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: ftPulseRing 2s cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+.ft-success-check {
+  width: 40px;
+  height: 40px;
+  color: #10B981;
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: ftDrawCheck 0.6s ease forwards 0.2s;
+}
+
+@keyframes ftFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ftPopIn {
+  from { opacity: 0; transform: scale(0.8) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes ftPulseRing {
+  0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  70% { transform: scale(1); box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@keyframes ftDrawCheck {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Toggle Switch Styles */
+.ft-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.ft-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.ft-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.ft-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #9CA3AF;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .ft-slider {
+  background-color: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+}
+
+input:checked + .ft-slider:before {
+  transform: translateX(20px);
+  background-color: #10B981;
+}
