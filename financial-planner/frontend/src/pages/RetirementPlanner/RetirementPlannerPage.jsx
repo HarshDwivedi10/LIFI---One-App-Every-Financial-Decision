@@ -562,6 +562,7 @@ export default function RetirementPlannerPage() {
       const res = await api.post('/retirement/plan', payload);
       setPlanId(res.data.id);
       setIsSaved(true);
+      window.dispatchEvent(new Event('retirementPlanUpdated'));
     } catch (err) {
       console.error("Failed to save plan", err);
     }
@@ -755,7 +756,7 @@ export default function RetirementPlannerPage() {
       {phase === 'RESULTS' && results && interactiveResults && !results.error && (
         <div className="results-container animate-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: '24px', position: 'relative' }}>
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(35, 37, 51, 0.4)', padding: '16px 24px', borderRadius: 'var(--radius-xl)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(35, 37, 51, 0.4)', padding: '16px 24px', borderRadius: 'var(--radius-xl)', border: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', margin: 0 }}>Retirement Plan Results</h3>
@@ -763,51 +764,48 @@ export default function RetirementPlannerPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={resetPlanner}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 Start Over
               </button>
-              <button className="btn btn-secondary" onClick={() => setPhase('INPUTS')}>
-                Edit Assumptions
-              </button>
-              
+
               <button 
-                className={`btn ${(!isSaved || isInlineEditing) ? 'btn-primary' : 'btn-secondary'}`} 
+                className={`btn ${isInlineEditing ? 'btn-primary' : 'btn-secondary'}`} 
                 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                 onClick={() => {
-                  if (!isSaved || isInlineEditing) {
-                    savePlan();
-                    setIsInlineEditing(false);
-                  } else {
-                    setIsInlineEditing(true);
+                  const nextEditing = !isInlineEditing;
+                  setIsInlineEditing(nextEditing);
+                  if (nextEditing) {
                     setIsSaved(false);
                   }
                 }}
               >
-                {(!isSaved || isInlineEditing) ? (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    Save Plan
-                  </>
-                ) : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                    Edit Plan
-                  </>
-                )}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                Edit
               </button>
 
-              {isSaved && !isInlineEditing && (
-                <button 
-                  className="btn btn-primary"
-                  onClick={syncToFundManagement}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', borderColor: '#10B981', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l-3.32 3.32"/></svg>
-                  Sync to Fund Management
-                </button>
-              )}
+              <button 
+                className={`btn ${isSaved ? 'btn-secondary' : 'btn-primary'}`}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px',
+                  ...(isSaved ? { opacity: 0.6, cursor: 'default', background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)' } : {})
+                }}
+                disabled={isSaved}
+                onClick={() => {
+                  if (!isSaved) {
+                    savePlan();
+                    setIsInlineEditing(false);
+                  }
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                {isSaved ? 'Saved' : 'Save Plan'}
+              </button>
+
+              {/* Sync button removed */}
             </div>
           </div>
 

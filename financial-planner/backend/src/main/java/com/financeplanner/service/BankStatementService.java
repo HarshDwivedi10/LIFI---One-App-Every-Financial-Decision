@@ -29,7 +29,7 @@ public class BankStatementService {
         log.info("Using parser {} for file {}", parser.getClass().getSimpleName(), file.getOriginalFilename());
         
         List<ParsedTransactionDto> parsedDtos = parser.parse(file);
-        log.info("Parsed {} transactions from file", parsedDtos.size());
+        log.info("Parsed {} transactions from file {}", parsedDtos.size(), file.getOriginalFilename());
         
         return parsedDtos.stream().map(dto -> mapToEntity(dto, user)).collect(Collectors.toList());
     }
@@ -38,27 +38,38 @@ public class BankStatementService {
         Transaction.TransactionType type;
         double amount;
 
-        if (dto.getCreditAmount() != null && dto.getCreditAmount() > 0) {
+        double credit = dto.getCreditAmount() != null ? dto.getCreditAmount() : 0.0;
+        double debit = dto.getDebitAmount() != null ? dto.getDebitAmount() : 0.0;
+
+        if (credit > 0 && debit == 0) {
             type = Transaction.TransactionType.INCOME;
-            amount = dto.getCreditAmount();
+            amount = credit;
+        } else if (debit > 0 && credit == 0) {
+            type = Transaction.TransactionType.EXPENSE;
+            amount = debit;
+        } else if (credit > 0) {
+            type = Transaction.TransactionType.INCOME;
+            amount = credit;
         } else {
             type = Transaction.TransactionType.EXPENSE;
-            amount = dto.getDebitAmount() != null ? dto.getDebitAmount() : 0.0;
+            amount = debit;
         }
 
         // Basic categorization heuristic
         String category = "Other";
-        String desc = dto.getDescription().toLowerCase();
-        if (desc.contains("amazon") || desc.contains("flipkart") || desc.contains("shopping")) {
+        String desc = dto.getDescription() != null ? dto.getDescription().toLowerCase() : "";
+        if (desc.contains("amazon") || desc.contains("flipkart") || desc.contains("shopping") || desc.contains("myntra")) {
             category = "Shopping";
-        } else if (desc.contains("uber") || desc.contains("ola") || desc.contains("irctc") || desc.contains("ticket")) {
+        } else if (desc.contains("uber") || desc.contains("ola") || desc.contains("irctc") || desc.contains("ticket") || desc.contains("flight") || desc.contains("petrol") || desc.contains("fuel")) {
             category = "Travel";
-        } else if (desc.contains("zomato") || desc.contains("swiggy") || desc.contains("restaurant") || desc.contains("food")) {
+        } else if (desc.contains("zomato") || desc.contains("swiggy") || desc.contains("restaurant") || desc.contains("food") || desc.contains("cafe") || desc.contains("dine")) {
             category = "Food";
-        } else if (desc.contains("salary") || desc.contains("payroll") || desc.contains("wages")) {
+        } else if (desc.contains("salary") || desc.contains("payroll") || desc.contains("wages") || desc.contains("dividend")) {
             category = "Salary";
         } else if (desc.contains("atm") || desc.contains("cash")) {
             category = "Cash";
+        } else if (desc.contains("electric") || desc.contains("water") || desc.contains("recharge") || desc.contains("wifi") || desc.contains("bill")) {
+            category = "Utilities";
         }
 
         return Transaction.builder()

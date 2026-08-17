@@ -14,7 +14,7 @@
 .chatbox-container.fb-style-overlay {
   position: fixed;
   bottom: 20px;
-  left: 24px;
+  right: 24px;
   width: 360px;
   height: 480px;
   z-index: 1000;
@@ -37,7 +37,7 @@
 .chatbox-minimized-pill {
   position: fixed;
   bottom: 20px;
-  left: 24px;
+  right: 24px;
   z-index: 1000;
   background: #1c1e2e;
   border: 1px solid #3b3e5a;

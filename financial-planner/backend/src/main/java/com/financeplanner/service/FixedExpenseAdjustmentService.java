@@ -114,23 +114,60 @@ public class FixedExpenseAdjustmentService {
         try {
             if (user.getFundAllocationsJson() != null && !user.getFundAllocationsJson().isEmpty() && !user.getFundAllocationsJson().equals("{}")) {
                 JsonNode json = objectMapper.readTree(user.getFundAllocationsJson());
-                JsonNode core = json.get("core");
-                double retirementPct = json.has("retirement") ? json.get("retirement").asDouble() : 0;
-                
                 List<Asset> assets = assetRepository.findByUserId(user.getId());
                 
-                if (retirementPct > 0) {
-                    Asset ret = assets.stream().filter(a -> "RETIREMENT".equals(a.getAssetType())).findFirst().orElse(null);
-                    if (ret != null) {
-                        double val = amount * (retirementPct / 100.0);
-                        ret.setCurrentValue(ret.getCurrentValue() + (reverse ? -val : val));
-                        assetRepository.save(ret);
-                    }
+                LocalDate today = LocalDate.now();
+                String monthKey = today.getYear() + "-" + String.format("%02d", today.getMonthValue());
+                JsonNode monthAllocations = null;
+                if (json.has("_timeline") && json.get("_timeline").has(monthKey)) {
+                    monthAllocations = json.get("_timeline").get(monthKey);
                 }
-                
-                if (core != null) {
-                    core.fields().forEachRemaining(entry -> {
+
+                if (monthAllocations != null) {
+                    monthAllocations.fields().forEachRemaining(entry -> {
                         String fundId = entry.getKey();
+                        if ("UNALLOCATED".equals(fundId)) return;
+                        double pct = entry.getValue().asDouble();
+                        if (pct > 0) {
+                            Asset fund = assets.stream().filter(a -> fundId.equals(a.getAssetType())).findFirst().orElse(null);
+                            if (fund != null) {
+                                double val = amount * (pct / 100.0);
+                                fund.setCurrentValue(fund.getCurrentValue() + (reverse ? -val : val));
+                                assetRepository.save(fund);
+                            }
+                        }
+                    });
+                } else if (json.has("core") || json.has("retirement")) {
+                    JsonNode core = json.get("core");
+                    double retirementPct = json.has("retirement") ? json.get("retirement").asDouble() : 0;
+                    
+                    if (retirementPct > 0) {
+                        Asset ret = assets.stream().filter(a -> "RETIREMENT".equals(a.getAssetType())).findFirst().orElse(null);
+                        if (ret != null) {
+                            double val = amount * (retirementPct / 100.0);
+                            ret.setCurrentValue(ret.getCurrentValue() + (reverse ? -val : val));
+                            assetRepository.save(ret);
+                        }
+                    }
+                    
+                    if (core != null) {
+                        core.fields().forEachRemaining(entry -> {
+                            String fundId = entry.getKey();
+                            double pct = entry.getValue().asDouble();
+                            if (pct > 0) {
+                                Asset fund = assets.stream().filter(a -> fundId.equals(a.getAssetType())).findFirst().orElse(null);
+                                if (fund != null) {
+                                    double val = amount * (pct / 100.0);
+                                    fund.setCurrentValue(fund.getCurrentValue() + (reverse ? -val : val));
+                                    assetRepository.save(fund);
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    json.fields().forEachRemaining(entry -> {
+                        String fundId = entry.getKey();
+                        if ("UNALLOCATED".equals(fundId) || "_metadata".equals(fundId) || "_timeline".equals(fundId)) return;
                         double pct = entry.getValue().asDouble();
                         if (pct > 0) {
                             Asset fund = assets.stream().filter(a -> fundId.equals(a.getAssetType())).findFirst().orElse(null);

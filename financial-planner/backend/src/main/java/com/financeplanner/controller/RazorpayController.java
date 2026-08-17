@@ -5,6 +5,7 @@ import com.financeplanner.entity.User;
 import com.financeplanner.repository.CoachProfileRepository;
 import com.financeplanner.repository.UserRepository;
 import com.financeplanner.service.CoachService;
+import com.financeplanner.service.EmailService;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.Utils;
@@ -29,11 +30,13 @@ public class RazorpayController {
     private final UserRepository userRepository;
     private final CoachProfileRepository coachProfileRepository;
     private final CoachService coachService;
+    private final EmailService emailService;
 
-    public RazorpayController(UserRepository userRepository, CoachProfileRepository coachProfileRepository, CoachService coachService) {
+    public RazorpayController(UserRepository userRepository, CoachProfileRepository coachProfileRepository, CoachService coachService, EmailService emailService) {
         this.userRepository = userRepository;
         this.coachProfileRepository = coachProfileRepository;
         this.coachService = coachService;
+        this.emailService = emailService;
     }
 
     @PostMapping("/create-order")
@@ -73,11 +76,25 @@ public class RazorpayController {
 
     @PostMapping("/verify-payment")
     public ResponseEntity<?> verifyPayment(@RequestBody Map<String, String> payload, @AuthenticationPrincipal User user) {
+        System.out.println("=== [RAZORPAY] verify-payment CALLED ===");
+        System.out.println("[RAZORPAY] Authenticated user: " + (user != null ? user.getEmail() : "NULL - NOT AUTHENTICATED"));
+        System.out.println("[RAZORPAY] Payload keys: " + payload.keySet());
+
+        if (user == null) {
+            System.err.println("[RAZORPAY] REJECTED: No authenticated user found in request.");
+            return ResponseEntity.status(401).body(Map.of("error", "User not authenticated"));
+        }
+
         try {
             String razorpayOrderId = payload.get("razorpay_order_id");
             String razorpayPaymentId = payload.get("razorpay_payment_id");
             String razorpaySignature = payload.get("razorpay_signature");
             String coachIdStr = payload.get("coachId");
+
+            System.out.println("[RAZORPAY] orderId=" + razorpayOrderId);
+            System.out.println("[RAZORPAY] paymentId=" + razorpayPaymentId);
+            System.out.println("[RAZORPAY] coachId=" + coachIdStr);
+            System.out.println("[RAZORPAY] signature present=" + (razorpaySignature != null && !razorpaySignature.isEmpty()));
 
             JSONObject options = new JSONObject();
             options.put("razorpay_order_id", razorpayOrderId);
@@ -85,6 +102,7 @@ public class RazorpayController {
             options.put("razorpay_signature", razorpaySignature);
 
             boolean isSignatureValid = Utils.verifyPaymentSignature(options, keySecret);
+            System.out.println("[RAZORPAY] Signature valid: " + isSignatureValid);
 
             if (isSignatureValid) {
                 Long coachId = Long.parseLong(coachIdStr);
@@ -96,8 +114,20 @@ public class RazorpayController {
                     if (profile != null) coachUser = profile.getUser();
                 }
 
+                System.out.println("[RAZORPAY] Coach found: " + (coachUser != null ? coachUser.getName() : "NOT FOUND"));
+
                 if (coachUser != null) {
                     coachService.hireCoach(user.getId(), coachUser.getId());
+                    System.out.println("[RAZORPAY] Coach hired successfully. Now sending email to: " + user.getEmail());
+
+                    // Send beautiful success email
+                    try {
+                        emailService.sendCoachHiringSuccessEmail(user.getEmail(), user.getName(), coachUser.getName());
+                        System.out.println("[RAZORPAY] Email triggered successfully for: " + user.getEmail());
+                    } catch (Exception emailEx) {
+                        emailEx.printStackTrace();
+                        System.err.println("[RAZORPAY] Email FAILED for: " + user.getEmail() + " | Reason: " + emailEx.getMessage());
+                    }
                 } else {
                     return ResponseEntity.badRequest().body(Map.of("error", "Coach user not found for ID: " + coachId));
                 }
@@ -108,10 +138,12 @@ public class RazorpayController {
                         "paymentId", razorpayPaymentId
                 ));
             } else {
+                System.err.println("[RAZORPAY] Signature INVALID. Payment rejected.");
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid payment signature. Verification failed."));
             }
         } catch (Exception e) {
             e.printStackTrace();
+            System.err.println("[RAZORPAY] Exception in verifyPayment: " + e.getMessage());
             return ResponseEntity.internalServerError().body(Map.of("error", "Verification failed: " + e.getMessage()));
         }
     }

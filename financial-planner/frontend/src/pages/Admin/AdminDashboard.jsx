@@ -162,6 +162,10 @@ export default function AdminDashboard() {
   if (error) {
     return (
       <div className="admin-dashboard">
+          <div className="admin-logo" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem', fontWeight: 'bold', color: '#fff' }}>
+            <img src="/src/assets/logo.png" alt="LI.FI Logo" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+            LI.FI
+          </div>
         <div className="admin-content">
           <div className="admin-error">
             <p>⚠️ {error}</p>
@@ -179,19 +183,17 @@ export default function AdminDashboard() {
       {/* ── Header ── */}
       <header className="admin-header">
         <div className="admin-header-left">
-          <div className="admin-logo">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
-            LiFi
+          <div className="admin-logo" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem', fontWeight: 'bold', color: '#fff' }}>
+            <img src="/src/assets/logo.png" alt="LI.FI Logo" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+            LI.FI
           </div>
           <span className="admin-badge">Admin</span>
 
           {/* Nav Tabs */}
           <nav className="admin-nav-tabs">
             <Link to="/admin" className="admin-nav-tab active">📊 Dashboard</Link>
-            <Link to="/admin/coaches" className="admin-nav-tab">🎓 Coach Mgt</Link>
-            <Link to="/admin/users" className="admin-nav-tab">👥 User Mgt</Link>
+            <Link to="/admin/coaches" className="admin-nav-tab">🎓 Coach Management</Link>
+            <Link to="/admin/users" className="admin-nav-tab">👥 User Management</Link>
           </nav>
         </div>
         <div className="admin-header-right">

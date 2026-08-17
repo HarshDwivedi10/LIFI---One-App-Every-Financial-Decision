@@ -43,6 +43,9 @@ public class User implements UserDetails {
     @Column(name = "fund_allocations_json", columnDefinition = "TEXT")
     private String fundAllocationsJson;
 
+    @Column(name = "last_discrepancy_source")
+    private String lastDiscrepancySource;
+
     private String name;
 
     @Column(name = "phone_number")
@@ -65,6 +68,10 @@ public class User implements UserDetails {
 
     @Enumerated(EnumType.STRING)
     private AccountStatus status;
+
+    @Column(name = "must_change_password")
+    @Builder.Default
+    private Boolean mustChangePassword = false;
 
     @PrePersist
     public void prePersist() {

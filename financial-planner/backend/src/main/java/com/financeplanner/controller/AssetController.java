@@ -1,10 +1,10 @@
 package com.financeplanner.controller;
 
+import com.financeplanner.dto.FundGoalDTO;
+import com.financeplanner.dto.FundGoalResponseDTO;
 import com.financeplanner.entity.Asset;
 import com.financeplanner.entity.User;
-import com.financeplanner.entity.FundTransfer;
 import com.financeplanner.repository.AssetRepository;
-import com.financeplanner.repository.FundTransferRepository;
 import com.financeplanner.repository.UserRepository;
 import com.financeplanner.service.UserResolverService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,6 +13,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @RestController
@@ -21,7 +23,6 @@ import java.util.List;
 public class AssetController {
 
     private final AssetRepository assetRepo;
-    private final FundTransferRepository transferRepo;
     private final UserRepository userRepo;
     private final UserResolverService userResolverService;
 
@@ -83,6 +84,12 @@ public class AssetController {
                 });
         
         asset.setCurrentValue(asset.getCurrentValue() + req.adjustmentAmount);
+        
+        // Clear discrepancy source
+        User dbUser = userRepo.findById(effectiveUser.getId()).orElse(effectiveUser);
+        dbUser.setLastDiscrepancySource(null);
+        userRepo.save(dbUser);
+        
         return ResponseEntity.ok(assetRepo.save(asset));
     }
 
@@ -118,26 +125,85 @@ public class AssetController {
                     return assetRepo.save(Asset.builder().user(effectiveUser).name(name).assetType(req.destinationFund).currentValue(0.0).build());
                 });
 
+        if (sourceAsset.getCurrentValue() < req.amount) {
+            return ResponseEntity.badRequest().body("Insufficient balance in source fund.");
+        }
+
         sourceAsset.setCurrentValue(sourceAsset.getCurrentValue() - req.amount);
         destAsset.setCurrentValue(destAsset.getCurrentValue() + req.amount);
 
         assetRepo.save(sourceAsset);
         assetRepo.save(destAsset);
 
-        FundTransfer transferLog = FundTransfer.builder()
-                .user(effectiveUser)
-                .sourceFund(req.sourceFund)
-                .destinationFund(req.destinationFund)
-                .amount(req.amount)
-                .build();
-        transferRepo.save(transferLog);
-
         return ResponseEntity.ok("Transfer successful");
     }
 
-    @GetMapping("/transfers")
-    public ResponseEntity<List<FundTransfer>> getTransfers(@AuthenticationPrincipal User user, HttpServletRequest request) {
-        User effectiveUser = userResolverService.getEffectiveUser(user, request);
-        return ResponseEntity.ok(transferRepo.findByUserIdOrderByDateDesc(effectiveUser.getId()));
+    /**
+     * Pure calculation endpoint — no DB writes.
+     * Computes required monthly contribution, feasibility, and projected date
+     * for a new fund goal based on the user's available monthly savings.
+     */
+    @PostMapping("/calculate-fund-goal")
+    public ResponseEntity<FundGoalResponseDTO> calculateFundGoal(@RequestBody FundGoalDTO req) {
+        double targetAmount = req.getTargetAmount() != null ? req.getTargetAmount() : 0;
+        double expectedMonthlySavings = req.getExpectedMonthlySavings() != null ? req.getExpectedMonthlySavings() : 0;
+        double alreadyAllocatedPct = req.getAlreadyAllocatedPct() != null ? req.getAlreadyAllocatedPct() : 0;
+
+        // Parse target date
+        LocalDate targetDate;
+        try {
+            targetDate = LocalDate.parse(req.getTargetDate());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        LocalDate today = LocalDate.now();
+        long monthsRemaining = ChronoUnit.MONTHS.between(today, targetDate);
+        if (monthsRemaining < 1) monthsRemaining = 1;
+
+        // Step 1: Required monthly contribution
+        double requiredMonthlyContrib = Math.ceil(targetAmount / monthsRemaining);
+
+        // Step 2: Available savings
+        double remainingPct = Math.max(0, 100.0 - alreadyAllocatedPct);
+        double remainingMonthlySavings = expectedMonthlySavings * (remainingPct / 100.0);
+
+        // Step 3: Required % of monthly savings
+        double requiredPct = 0;
+        if (expectedMonthlySavings > 0) {
+            requiredPct = (requiredMonthlyContrib / expectedMonthlySavings) * 100.0;
+        }
+
+        // Step 4: Suggested allocation % (clamped to remaining)
+        double suggestedPct = Math.min(requiredPct, remainingPct);
+
+        // Step 5: Feasibility
+        boolean feasible = requiredMonthlyContrib <= remainingMonthlySavings + 0.01; // small epsilon for floating point
+
+        FundGoalResponseDTO.FundGoalResponseDTOBuilder builder = FundGoalResponseDTO.builder()
+                .monthsRemaining(monthsRemaining)
+                .requiredMonthlyContrib(Math.ceil(requiredMonthlyContrib))
+                .requiredPct(Math.round(requiredPct * 100.0) / 100.0)
+                .suggestedPct(Math.round(suggestedPct * 100.0) / 100.0)
+                .remainingMonthlySavings(Math.round(remainingMonthlySavings))
+                .remainingPct(remainingPct)
+                .feasible(feasible)
+                .shortfallMonthly(0)
+                .projectedDate("")
+                .projectedMonths(0);
+
+        if (!feasible && remainingMonthlySavings > 0) {
+            double shortfall = requiredMonthlyContrib - remainingMonthlySavings;
+            long projectedMonths = (long) Math.ceil(targetAmount / remainingMonthlySavings);
+            LocalDate projectedDate = today.plusMonths(projectedMonths);
+            builder.shortfallMonthly(Math.ceil(shortfall))
+                   .projectedMonths(projectedMonths)
+                   .projectedDate(projectedDate.toString());
+        } else if (!feasible) {
+            // No savings available at all
+            builder.shortfallMonthly(Math.ceil(requiredMonthlyContrib));
+        }
+
+        return ResponseEntity.ok(builder.build());
     }
 }

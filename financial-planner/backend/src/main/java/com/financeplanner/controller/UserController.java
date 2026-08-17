@@ -39,6 +39,7 @@ public class UserController {
         response.put("preExistingSavingsDate", dbUser.getPreExistingSavingsDate());
         response.put("liveTotalSavings", savingsCalculationService.calculateLiveTotalSavings(dbUser));
         response.put("fundAllocationsJson", dbUser.getFundAllocationsJson() != null ? dbUser.getFundAllocationsJson() : "{}");
+        response.put("lastDiscrepancySource", dbUser.getLastDiscrepancySource());
         return ResponseEntity.ok(response);
     }
 
@@ -77,8 +78,15 @@ public class UserController {
             dbUser.setSalaryTime(payload.get("salaryTime").toString());
         }
         if (payload.containsKey("manualTotalSavings")) {
-            dbUser.setManualTotalSavings(Double.parseDouble(payload.get("manualTotalSavings").toString()));
+            double oldManual = dbUser.getManualTotalSavings() != null ? dbUser.getManualTotalSavings() : 0.0;
+            double newManual = Double.parseDouble(payload.get("manualTotalSavings").toString());
+            dbUser.setManualTotalSavings(newManual);
             manualSavingsChanged = true;
+            
+            double delta = newManual - oldManual;
+            if (delta != 0.0 && dbUser.getId() != null) {
+                savingsCalculationService.adjustUnallocatedSavings(dbUser, delta);
+            }
         }
         if (payload.containsKey("preExistingSavingsDate")) {
             dbUser.setPreExistingSavingsDate(payload.get("preExistingSavingsDate").toString());

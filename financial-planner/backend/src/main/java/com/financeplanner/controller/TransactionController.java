@@ -13,8 +13,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -26,6 +28,7 @@ public class TransactionController {
     private final com.financeplanner.service.BankStatementService bankStatementService;
     private final com.financeplanner.service.ReconciliationService reconciliationService;
     private final UserResolverService userResolverService;
+    private final com.financeplanner.service.SavingsCalculationService savingsCalculationService;
 
     @GetMapping
     public List<Transaction> getAll(@AuthenticationPrincipal User user, HttpServletRequest request) {
@@ -37,7 +40,11 @@ public class TransactionController {
     public Transaction create(@RequestBody Transaction transaction, @AuthenticationPrincipal User user, HttpServletRequest request) {
         User effectiveUser = userResolverService.getEffectiveUser(user, request);
         transaction.setUser(effectiveUser);
-        return txnRepo.save(transaction);
+        Transaction[] saved = new Transaction[1];
+        savingsCalculationService.trackDiscrepancyOperation(effectiveUser, "Added a transaction", () -> {
+            saved[0] = txnRepo.save(transaction);
+        });
+        return saved[0];
     }
 
     @PostMapping("/bulk")
@@ -58,7 +65,11 @@ public class TransactionController {
                     existing.setCategory(updated.getCategory());
                     existing.setAmount(updated.getAmount());
                     existing.setDescription(updated.getDescription());
-                    return ResponseEntity.ok(txnRepo.save(existing));
+                    Transaction[] saved = new Transaction[1];
+                    savingsCalculationService.trackDiscrepancyOperation(effectiveUser, "Modified a past transaction", () -> {
+                        saved[0] = txnRepo.save(existing);
+                    });
+                    return ResponseEntity.ok(saved[0]);
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -69,7 +80,9 @@ public class TransactionController {
         return txnRepo.findById(id)
                 .filter(existing -> existing.getUser().getId().equals(effectiveUser.getId()))
                 .map(existing -> {
-                    txnRepo.deleteById(id);
+                    savingsCalculationService.trackDiscrepancyOperation(effectiveUser, "Deleted a transaction", () -> {
+                        txnRepo.deleteById(id);
+                    });
                     return ResponseEntity.noContent().<Void>build();
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -92,26 +105,55 @@ public class TransactionController {
     }
 
     @PostMapping("/parse-csv-preview")
-    public ResponseEntity<?> parseCsvPreview(@RequestParam("file") MultipartFile file, @AuthenticationPrincipal User user, HttpServletRequest request) {
+    public ResponseEntity<?> parseCsvPreview(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "year", required = false) Integer year,
+            @RequestParam(value = "month", required = false) Integer month,
+            @AuthenticationPrincipal User user,
+            HttpServletRequest request
+    ) {
         User effectiveUser = userResolverService.getEffectiveUser(user, request);
         if (file.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "No file uploaded"));
         try {
             List<Transaction> parsed = bankStatementService.parseStatement(file, effectiveUser);
             
-            double csvIncome = parsed.stream()
-                .filter(t -> "INCOME".equals(t.getType()) || "CREDIT".equals(t.getType()))
-                .mapToDouble(Transaction::getAmount).sum();
-                
-            double csvExpense = parsed.stream()
-                .filter(t -> "EXPENSE".equals(t.getType()) || "DEBIT".equals(t.getType()))
-                .mapToDouble(Transaction::getAmount).sum();
-                
+            // If year and month were passed, filter matching transactions if available
+            List<Transaction> filtered = parsed;
+            if (year != null && month != null) {
+                List<Transaction> byMonth = parsed.stream()
+                        .filter(t -> t.getDate() != null && t.getDate().getYear() == year && t.getDate().getMonthValue() == month)
+                        .collect(Collectors.toList());
+                if (!byMonth.isEmpty()) {
+                    filtered = byMonth;
+                }
+            }
+
+            double csvIncome = filtered.stream()
+                    .filter(t -> t.getType() == Transaction.TransactionType.INCOME || t.getType() == Transaction.TransactionType.CREDIT)
+                    .mapToDouble(Transaction::getAmount).sum();
+
+            double csvExpense = filtered.stream()
+                    .filter(t -> t.getType() == Transaction.TransactionType.EXPENSE || t.getType() == Transaction.TransactionType.DEBIT)
+                    .mapToDouble(Transaction::getAmount).sum();
+
+            List<Map<String, Object>> txnList = filtered.stream().map(t -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("date", t.getDate() != null ? t.getDate().toString() : "");
+                map.put("description", t.getDescription() != null ? t.getDescription() : "Transaction");
+                map.put("type", t.getType() != null ? t.getType().name() : "EXPENSE");
+                map.put("amount", t.getAmount());
+                map.put("category", t.getCategory() != null ? t.getCategory() : "Other");
+                return map;
+            }).collect(Collectors.toList());
+
             return ResponseEntity.ok(Map.of(
-                "csvIncome", csvIncome,
-                "csvExpense", csvExpense
+                    "csvIncome", csvIncome,
+                    "csvExpense", csvExpense,
+                    "totalCount", filtered.size(),
+                    "transactions", txnList
             ));
         } catch (Exception e) {
-            log.error("Failed to parse CSV preview", e);
+            log.error("Failed to parse statement preview", e);
             return ResponseEntity.internalServerError().body(Map.of("error", "Parsing failed: " + e.getMessage()));
         }
     }

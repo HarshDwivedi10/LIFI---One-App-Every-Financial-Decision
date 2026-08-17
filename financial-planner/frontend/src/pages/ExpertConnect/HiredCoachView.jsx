@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import './HiredCoachView.css';
 
 export default function HiredCoachView({ coach, onOpenChat }) {
-  const [permission, setPermission] = useState('READ_ONLY'); // 'READ_ONLY' | 'READ_WRITE'
+  const [permission, setPermission] = useState('READ_ONLY');
   const [loadingPerm, setLoadingPerm] = useState(true);
   const [updatingPerm, setUpdatingPerm] = useState(false);
 
@@ -64,8 +64,8 @@ export default function HiredCoachView({ coach, onOpenChat }) {
       setPermission(newPerm);
       toast.success(
         newPerm === 'READ_WRITE'
-          ? '✏️ Read & Edit permission granted to coach!'
-          : '👁️ Access set to Read-Only Mode!'
+          ? 'Read & Edit permission granted to coach!'
+          : 'Access updated to Read-Only mode!'
       );
     } catch (err) {
       console.error(err);
@@ -78,7 +78,7 @@ export default function HiredCoachView({ coach, onOpenChat }) {
   const handleAcceptEdit = async (id) => {
     try {
       await userCoachApi.acceptPendingEdit(id);
-      toast.success('✓ Edit accepted & applied to your portfolio!');
+      toast.success('Edit accepted and applied to your portfolio!');
       fetchPendingEdits();
     } catch (err) {
       console.error(err);
@@ -124,7 +124,7 @@ export default function HiredCoachView({ coach, onOpenChat }) {
 
   return (
     <div className="hired-coach-redesign">
-      
+
       {/* Top Hero Banner */}
       <div className="hired-hero-banner">
         <div className="hero-left">
@@ -138,12 +138,22 @@ export default function HiredCoachView({ coach, onOpenChat }) {
           </div>
 
           <div className="hero-info">
-            <span className="hired-status-badge">✓ ACTIVE HIRED COACH</span>
-            <h2>{coach?.name}</h2>
+            <span className="hired-status-badge">
+              <span className="badge-pulse-dot" />
+              ACTIVE COACH
+            </span>
+            <div className="coach-name-row">
+              <h2>{coach?.name}</h2>
+            </div>
             <p className="coach-designation">{coach?.title || 'Financial Planning Coach'}</p>
             <div className="coach-meta-line">
-              {coach?.location && <span>📍 {coach.location}</span>}
-              {coach?.email && <span>✉️ {coach.email}</span>}
+              {coach?.location && (
+                <span className="meta-item">{coach.location}</span>
+              )}
+              <span className="meta-item">{coach?.yearsExperience || '8+ Years Experience'}</span>
+              <span className="meta-item">
+                {coach?.rating || 4.9} ({coach?.clientCount || '120+ Clients'})
+              </span>
             </div>
           </div>
         </div>
@@ -151,30 +161,29 @@ export default function HiredCoachView({ coach, onOpenChat }) {
         <div className="hero-actions">
           {coach?.resumeBase64 && (
             <button className="download-cv-btn" onClick={handleDownloadCV}>
-              📄 View / Download CV
+              <span>View / Download CV</span>
             </button>
           )}
-          <button className="chat-hero-btn" onClick={() => onOpenChat(coach)}>
-            💬 Chat with Coach
-          </button>
         </div>
       </div>
 
       {/* Main Content Layout */}
       <div className="hired-main-grid">
-        
-        {/* Left Column: Permission Settings & Pending Edits */}
+
+        {/* Left Column: Permission Settings */}
         <div className="grid-column-left">
-          
+
           {/* Section 1: Access Permission Controls */}
           <div className="section-card perm-section">
             <div className="card-header">
               <div className="header-title-group">
-                <h3>🔒 Coach Access & Edit Permissions</h3>
-                <p>Specify what level of access Coach {coach?.name} is allowed on your personal financial portal.</p>
+                <h3 className="section-heading-with-icon">
+                  <span>Coach Access &amp; Permissions</span>
+                </h3>
+                <p>Control the level of access your coach has on your financial data.</p>
               </div>
               <span className={`perm-badge-tag ${permission === 'READ_WRITE' ? 'rw' : 'ro'}`}>
-                {permission === 'READ_WRITE' ? '✏️ Read & Edit Enabled' : '👁️ Read-Only Mode'}
+                {permission === 'READ_WRITE' ? 'Read & Edit Enabled' : 'Read-Only Mode'}
               </span>
             </div>
 
@@ -182,93 +191,59 @@ export default function HiredCoachView({ coach, onOpenChat }) {
               <div className="loading-placeholder">Loading permission settings...</div>
             ) : (
               <div className="perm-cards-container">
-                
+
                 {/* Option 1: READ_ONLY */}
-                <div 
+                <div
                   className={`perm-choice-card ${permission === 'READ_ONLY' ? 'active-choice' : ''}`}
                   onClick={() => handlePermissionChange('READ_ONLY')}
                 >
                   <div className="choice-radio">
-                    <input 
-                      type="radio" 
-                      name="coach-perm-radio" 
-                      checked={permission === 'READ_ONLY'} 
-                      onChange={() => handlePermissionChange('READ_ONLY')} 
+                    <input
+                      type="radio"
+                      name="coach-perm-radio"
+                      checked={permission === 'READ_ONLY'}
+                      onChange={() => handlePermissionChange('READ_ONLY')}
                     />
                   </div>
                   <div className="choice-body">
                     <div className="choice-title">
-                      <span>👁️ Allow Coach to READ Data</span>
+                      <div className="title-left">
+                        <span>Allow Coach to READ Data</span>
+                      </div>
                       {permission === 'READ_ONLY' && <span className="active-pill">ACTIVE MODE</span>}
                     </div>
                     <p className="choice-desc">
-                      Coach can view your entire portal (Income, Expenses, Funds, Retirement, Goals) to analyze your finances, but <strong>cannot make any edits</strong>.
+                      Coach can view your entire portal (Income, Expenses, Funds, Retirement, Goals) to analyze your finances, but cannot make any edits.
                     </p>
                   </div>
                 </div>
 
                 {/* Option 2: READ_WRITE */}
-                <div 
+                <div
                   className={`perm-choice-card ${permission === 'READ_WRITE' ? 'active-choice' : ''}`}
                   onClick={() => handlePermissionChange('READ_WRITE')}
                 >
                   <div className="choice-radio">
-                    <input 
-                      type="radio" 
-                      name="coach-perm-radio" 
-                      checked={permission === 'READ_WRITE'} 
-                      onChange={() => handlePermissionChange('READ_WRITE')} 
+                    <input
+                      type="radio"
+                      name="coach-perm-radio"
+                      checked={permission === 'READ_WRITE'}
+                      onChange={() => handlePermissionChange('READ_WRITE')}
                     />
                   </div>
                   <div className="choice-body">
                     <div className="choice-title">
-                      <span>✏️ Allow Coach to READ & EDIT Data</span>
+                      <div className="title-left">
+                        <span>Allow Coach to READ &amp; EDIT Data</span>
+                      </div>
                       {permission === 'READ_WRITE' && <span className="active-pill rw">ACTIVE MODE</span>}
                     </div>
                     <p className="choice-desc">
-                      Coach can view your portal and propose edits to your funds or goals. <strong>Any edit made by the coach requires your explicit approval before taking effect.</strong>
+                      Coach can view your portal and propose edits to your funds or goals. Any edit made by the coach requires your explicit approval before taking effect.
                     </p>
                   </div>
                 </div>
 
-              </div>
-            )}
-          </div>
-
-          {/* Section 2: Pending Edits Requiring Approval */}
-          <div className="section-card pending-section">
-            <div className="card-header">
-              <h3>🔔 Proposed Changes Requiring Approval ({pendingEdits.length})</h3>
-            </div>
-
-            {loadingEdits ? (
-              <div className="loading-placeholder">Checking pending edit requests...</div>
-            ) : pendingEdits.length === 0 ? (
-              <div className="empty-state-box">
-                <div className="check-circle">✓</div>
-                <h4>No Pending Edits</h4>
-                <p>There are currently no proposed edits awaiting your approval.</p>
-              </div>
-            ) : (
-              <div className="pending-items-list">
-                {pendingEdits.map(edit => (
-                  <div key={edit.id} className="pending-edit-item">
-                    <div className="edit-info">
-                      <span className="entity-tag">{edit.targetEntity || 'PORTFOLIO'}</span>
-                      <p className="edit-text">{edit.description}</p>
-                      <span className="edit-timestamp">{formatDate(edit.createdAt)}</span>
-                    </div>
-
-                    <div className="edit-actions-group">
-                      <button className="accept-action-btn" onClick={() => handleAcceptEdit(edit.id)}>
-                        ✓ Accept & Apply
-                      </button>
-                      <button className="reject-action-btn" onClick={() => handleRejectEdit(edit.id)}>
-                        ✕ Reject
-                      </button>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </div>
@@ -280,8 +255,10 @@ export default function HiredCoachView({ coach, onOpenChat }) {
           <div className="section-card sug-section">
             <div className="card-header">
               <div className="header-title-group">
-                <h3>💡 Coach Financial Advice ({suggestions.length})</h3>
-                <p>Personalized recommendations posted by Coach {coach?.name}.</p>
+                <h3 className="section-heading-with-icon">
+                  <span>Coach Financial Advice ({suggestions.length})</span>
+                </h3>
+                <p>Personalized recommendations from your coach.</p>
               </div>
             </div>
 
@@ -289,7 +266,6 @@ export default function HiredCoachView({ coach, onOpenChat }) {
               <div className="loading-placeholder">Loading coach advice...</div>
             ) : suggestions.length === 0 ? (
               <div className="empty-state-box advice-empty">
-                <span className="bulb-icon">💡</span>
                 <h4>No Advice Posted Yet</h4>
                 <p>Your coach will review your financial portal and post personalized recommendations here.</p>
               </div>
@@ -301,9 +277,7 @@ export default function HiredCoachView({ coach, onOpenChat }) {
                       <span className="category-pill">{sug.category || 'General Advice'}</span>
                       <span className="advice-time">{formatDate(sug.createdAt)}</span>
                     </div>
-                    
                     <p className="advice-content">"{sug.suggestionText}"</p>
-
                     <div className="advice-footer">
                       <span className="coach-sig">Suggested by Coach {sug.coachName || coach?.name}</span>
                     </div>
@@ -314,6 +288,48 @@ export default function HiredCoachView({ coach, onOpenChat }) {
           </div>
         </div>
 
+      </div>
+
+      {/* Full Width Section: Proposed Changes Requiring Approval */}
+      <div className="section-card pending-section full-width-section">
+        <div className="card-header">
+          <div className="header-title-group">
+            <h3 className="section-heading-with-icon">
+              <span>Proposed Changes Requiring Approval ({pendingEdits.length})</span>
+            </h3>
+            <p>Review and approve changes proposed by your coach.</p>
+          </div>
+        </div>
+
+        {loadingEdits ? (
+          <div className="loading-placeholder">Checking pending edit requests...</div>
+        ) : pendingEdits.length === 0 ? (
+          <div className="empty-state-box">
+            <h4>No Pending Changes</h4>
+            <p>There are currently no proposed edits awaiting your approval.</p>
+          </div>
+        ) : (
+          <div className="pending-items-list">
+            {pendingEdits.map(edit => (
+              <div key={edit.id} className="pending-edit-item">
+                <div className="edit-info">
+                  <span className="entity-tag">{edit.targetEntity || 'PORTFOLIO'}</span>
+                  <p className="edit-text">{edit.description}</p>
+                  <span className="edit-timestamp">{formatDate(edit.createdAt)}</span>
+                </div>
+
+                <div className="edit-actions-group">
+                  <button className="accept-action-btn" onClick={() => handleAcceptEdit(edit.id)}>
+                    Accept &amp; Apply
+                  </button>
+                  <button className="reject-action-btn" onClick={() => handleRejectEdit(edit.id)}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

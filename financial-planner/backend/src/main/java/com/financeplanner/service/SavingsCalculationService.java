@@ -31,6 +31,17 @@ public class SavingsCalculationService {
         return (Double) breakdown.get("totalSavings");
     }
 
+    public void trackDiscrepancyOperation(User user, String reason, Runnable action) {
+        double oldTotal = calculateLiveTotalSavings(user);
+        action.run();
+        double newTotal = calculateLiveTotalSavings(user);
+        
+        if (Math.abs(newTotal - oldTotal) > 1.0) {
+            user.setLastDiscrepancySource(reason);
+            userRepository.save(user);
+        }
+    }
+
     public Map<String, Object> getSavingsBreakdown(User user) {
         double manualSavings = user.getManualTotalSavings() != null ? user.getManualTotalSavings() : 0.0;
         String savingsDate = user.getPreExistingSavingsDate() != null ? user.getPreExistingSavingsDate() : "";
@@ -143,7 +154,10 @@ public class SavingsCalculationService {
             }
         }
 
-        double totalSavings = manualSavings + olderCumulative + recentNetSum;
+        List<MonthlyStatementVerification> verifications = verificationRepository.findByUserId(user.getId());
+        double totalAppliedDeficit = verifications.stream().mapToDouble(MonthlyStatementVerification::getAppliedDeficit).sum();
+
+        double totalSavings = manualSavings + olderCumulative + recentNetSum - totalAppliedDeficit;
 
         Map<String, Object> result = new HashMap<>();
         result.put("manualTotalSavings", manualSavings);
@@ -171,18 +185,22 @@ public class SavingsCalculationService {
 
         List<Asset> assetsList = assetRepository.findByUserId(user.getId());
         double sumAssets = assetsList.stream().mapToDouble(a -> a.getCurrentValue() != null ? a.getCurrentValue() : 0.0).sum();
-        if ((assetsList.isEmpty() || sumAssets == 0.0) && user.getManualTotalSavings() != null && user.getManualTotalSavings() > 0) {
-            syncPreExistingAssets(user, user.getManualTotalSavings());
-            assetsList = assetRepository.findByUserId(user.getId());
+        if (assetsList.isEmpty() || sumAssets == 0.0) {
+            // Ensure at least UNALLOCATED exists
+            boolean unallocExists = assetsList.stream().anyMatch(a -> "UNALLOCATED".equals(a.getAssetType()));
+            if (!unallocExists) {
+                syncPreExistingAssets(user, user.getManualTotalSavings() != null ? user.getManualTotalSavings() : liveTotalSavings);
+                assetsList = assetRepository.findByUserId(user.getId());
+            }
         }
 
         Map<String, Double> preExistingAssets = new HashMap<>();
-        preExistingAssets.put("RETIREMENT", 0.0);
-        preExistingAssets.put("LONG_TERM", 0.0);
-        preExistingAssets.put("SHORT_TERM", 0.0);
-        preExistingAssets.put("EMERGENCY", 0.0);
-        preExistingAssets.put("WEALTH", 0.0);
         preExistingAssets.put("UNALLOCATED", 0.0);
+        for (Asset a : assetsList) {
+            if (a.getAssetType() != null) {
+                preExistingAssets.put(a.getAssetType(), 0.0);
+            }
+        }
 
         ObjectMapper mapper = new ObjectMapper();
 
@@ -212,77 +230,131 @@ public class SavingsCalculationService {
         }
 
         String fundAllocJson = user.getFundAllocationsJson();
-        double retPercent = 0.0;
-        Map<String, Double> coreAlloc = new HashMap<>();
-        coreAlloc.put("LONG_TERM", 25.0);
-        coreAlloc.put("SHORT_TERM", 25.0);
-        coreAlloc.put("EMERGENCY", 25.0);
-        coreAlloc.put("WEALTH", 25.0);
+        Map<String, Double> customAllocs = new HashMap<>();
 
         if (fundAllocJson != null && !fundAllocJson.trim().isEmpty()) {
             try {
                 Map<String, Object> parsed = mapper.readValue(fundAllocJson, new TypeReference<Map<String, Object>>() {});
-                if (parsed.containsKey("retirement") && parsed.get("retirement") != null) {
-                    retPercent = ((Number) parsed.get("retirement")).doubleValue();
-                }
-                if (parsed.containsKey("core") && parsed.get("core") != null) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> coreMap = (Map<String, Object>) parsed.get("core");
-                    for (Map.Entry<String, Object> entry : coreMap.entrySet()) {
+                LocalDate today = LocalDate.now();
+                String monthKey = today.getYear() + "-" + String.format("%02d", today.getMonthValue());
+                
+                if (parsed.containsKey("_timeline") && ((Map<String, Object>) parsed.get("_timeline")).containsKey(monthKey)) {
+                    Map<String, Object> monthAllocations = (Map<String, Object>) ((Map<String, Object>) parsed.get("_timeline")).get(monthKey);
+                    for (Map.Entry<String, Object> entry : monthAllocations.entrySet()) {
                         if (entry.getValue() instanceof Number) {
-                            coreAlloc.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
+                            customAllocs.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
+                        }
+                    }
+                } else if (parsed.containsKey("core") || parsed.containsKey("retirement")) {
+                    // Migrate/parse old structure
+                    if (parsed.containsKey("retirement") && parsed.get("retirement") != null) {
+                        customAllocs.put("RETIREMENT", ((Number) parsed.get("retirement")).doubleValue());
+                    }
+                    if (parsed.containsKey("core") && parsed.get("core") != null) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> coreMap = (Map<String, Object>) parsed.get("core");
+                        for (Map.Entry<String, Object> entry : coreMap.entrySet()) {
+                            if (entry.getValue() instanceof Number) {
+                                customAllocs.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
+                            }
+                        }
+                    }
+                } else {
+                    for (Map.Entry<String, Object> entry : parsed.entrySet()) {
+                        if (entry.getValue() instanceof Number && !"_metadata".equals(entry.getKey()) && !"_timeline".equals(entry.getKey())) {
+                            customAllocs.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
                         }
                     }
                 }
             } catch (Exception ignored) {}
         }
 
-        double totalAllocatedPct = retPercent;
-        for (Double val : coreAlloc.values()) {
-            totalAllocatedPct += val;
+        double totalAllocatedPct = 0.0;
+        for (Map.Entry<String, Double> entry : customAllocs.entrySet()) {
+            if (!"UNALLOCATED".equals(entry.getKey())) {
+                totalAllocatedPct += entry.getValue();
+            }
         }
         double unallocatedPct = Math.max(0.0, 100.0 - totalAllocatedPct);
 
         List<Map<String, Object>> fundSummaries = new ArrayList<>();
-        String[][] fundDefs = {
-            {"RETIREMENT", "Retirement Corpus", "1. Retirement Corpus"},
-            {"LONG_TERM", "Long-Term Goal Corpus", "2. Long-Term Goal Corpus"},
-            {"SHORT_TERM", "Short-Term Goal Corpus", "3. Short-Term Goal Corpus"},
-            {"EMERGENCY", "Emergency & Protection Corpus", "4. Emergency & Protection Corpus"},
-            {"WEALTH", "Wealth Creation Corpus", "5. Wealth Creation Corpus"},
-            {"UNALLOCATED", "Unallocated Savings", "6. Unallocated Savings"}
-        };
+        Set<String> allFundIds = new LinkedHashSet<>();
+        
+        // Ensure user's database assets are added in order
+        for (Asset a : assetsList) {
+            if (a.getAssetType() != null && !"UNALLOCATED".equals(a.getAssetType())) {
+                allFundIds.add(a.getAssetType());
+            }
+        }
+        // Add any additional allocated funds
+        for (String id : customAllocs.keySet()) {
+            if (!"UNALLOCATED".equals(id)) {
+                allFundIds.add(id);
+            }
+        }
 
-        for (String[] def : fundDefs) {
-            String fundId = def[0];
-            String name = def[1];
-            String fullName = def[2];
+        Map<String, String> fundNames = new HashMap<>();
+        fundNames.put("UNALLOCATED", "Unallocated Savings");
+        for (Asset a : assetsList) {
+            if (a.getAssetType() != null) {
+                fundNames.put(a.getAssetType(), a.getName());
+            }
+        }
 
-            double pct = 0.0;
-            if ("RETIREMENT".equals(fundId)) pct = retPercent;
-            else if ("UNALLOCATED".equals(fundId)) pct = unallocatedPct;
-            else pct = coreAlloc.getOrDefault(fundId, 0.0);
-
+        int idx = 1;
+        for (String fundId : allFundIds) {
+            double pct = customAllocs.getOrDefault(fundId, 0.0);
             double storedAssetBal = preExistingAssets.getOrDefault(fundId, 0.0);
             double monthlyContrib = expectedMonthlySavings * (pct / 100.0);
             double totalBalance = Math.round(storedAssetBal + monthlyContrib);
 
-            // Skip Retirement Corpus if user has not set up retirement planning (0% alloc and 0 balance)
-            if ("RETIREMENT".equals(fundId) && pct == 0.0 && storedAssetBal == 0.0) {
-                continue;
+            // Find matching asset ID
+            Long assetId = null;
+            for (Asset a : assetsList) {
+                if (fundId.equals(a.getAssetType())) {
+                    assetId = a.getId();
+                    break;
+                }
             }
 
             Map<String, Object> fundObj = new HashMap<>();
             fundObj.put("id", fundId);
-            fundObj.put("name", name);
-            fundObj.put("fullName", fullName);
+            fundObj.put("name", fundNames.getOrDefault(fundId, fundId));
+            fundObj.put("fullName", idx + ". " + fundNames.getOrDefault(fundId, fundId));
             fundObj.put("percent", pct);
             fundObj.put("storedAssetBalance", storedAssetBal);
             fundObj.put("monthlyAlloc", Math.round(monthlyContrib));
             fundObj.put("balance", totalBalance);
+            fundObj.put("assetId", assetId);
 
             fundSummaries.add(fundObj);
+            idx++;
         }
+
+        // Add UNALLOCATED at the end
+        double storedUnallocatedBal = preExistingAssets.getOrDefault("UNALLOCATED", 0.0);
+        double monthlyUnallocatedContrib = expectedMonthlySavings * (unallocatedPct / 100.0);
+        double totalUnallocatedBalance = Math.round(storedUnallocatedBal + monthlyUnallocatedContrib);
+
+        Long unallocAssetId = null;
+        for (Asset a : assetsList) {
+            if ("UNALLOCATED".equals(a.getAssetType())) {
+                unallocAssetId = a.getId();
+                break;
+            }
+        }
+
+        Map<String, Object> unallocatedObj = new HashMap<>();
+        unallocatedObj.put("id", "UNALLOCATED");
+        unallocatedObj.put("name", "Unallocated Savings");
+        unallocatedObj.put("fullName", idx + ". Unallocated Savings");
+        unallocatedObj.put("percent", unallocatedPct);
+        unallocatedObj.put("storedAssetBalance", storedUnallocatedBal);
+        unallocatedObj.put("monthlyAlloc", Math.round(monthlyUnallocatedContrib));
+        unallocatedObj.put("balance", totalUnallocatedBalance);
+        unallocatedObj.put("assetId", unallocAssetId);
+        
+        fundSummaries.add(unallocatedObj);
 
         Map<String, Object> result = new HashMap<>();
         result.put("totalSavings", liveTotalSavings);
@@ -299,78 +371,56 @@ public class SavingsCalculationService {
 
         ObjectMapper mapper = new ObjectMapper();
         String fundAllocJson = dbUser.getFundAllocationsJson();
-        double retPercent = 0.0;
-        Map<String, Double> coreAlloc = new HashMap<>();
-        coreAlloc.put("LONG_TERM", 0.0);
-        coreAlloc.put("SHORT_TERM", 0.0);
-        coreAlloc.put("EMERGENCY", 0.0);
-        coreAlloc.put("WEALTH", 0.0);
-
+        Map<String, Double> customAllocs = new HashMap<>();
+        
         if (fundAllocJson != null && !fundAllocJson.trim().isEmpty()) {
             try {
                 Map<String, Object> parsed = mapper.readValue(fundAllocJson, new TypeReference<Map<String, Object>>() {});
-                if (parsed.containsKey("retirement") && parsed.get("retirement") != null) {
-                    retPercent = ((Number) parsed.get("retirement")).doubleValue();
-                }
-                if (parsed.containsKey("core") && parsed.get("core") != null) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> coreMap = (Map<String, Object>) parsed.get("core");
-                    for (Map.Entry<String, Object> entry : coreMap.entrySet()) {
+                if (parsed.containsKey("core") || parsed.containsKey("retirement")) {
+                    if (parsed.containsKey("retirement") && parsed.get("retirement") != null) {
+                        customAllocs.put("RETIREMENT", ((Number) parsed.get("retirement")).doubleValue());
+                    }
+                    if (parsed.containsKey("core") && parsed.get("core") != null) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> coreMap = (Map<String, Object>) parsed.get("core");
+                        for (Map.Entry<String, Object> entry : coreMap.entrySet()) {
+                            if (entry.getValue() instanceof Number) {
+                                customAllocs.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
+                            }
+                        }
+                    }
+                } else {
+                    for (Map.Entry<String, Object> entry : parsed.entrySet()) {
                         if (entry.getValue() instanceof Number) {
-                            coreAlloc.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
+                            customAllocs.put(entry.getKey(), ((Number) entry.getValue()).doubleValue());
                         }
                     }
                 }
             } catch (Exception ignored) {}
         }
 
-        double totalAllocatedPct = retPercent + coreAlloc.values().stream().mapToDouble(Double::doubleValue).sum();
-        double unallocatedPct = Math.max(0.0, 100.0 - totalAllocatedPct);
-
-        Map<String, Double> fundPctMap = new HashMap<>();
-        fundPctMap.put("RETIREMENT", retPercent);
-        fundPctMap.put("LONG_TERM", coreAlloc.getOrDefault("LONG_TERM", 0.0));
-        fundPctMap.put("SHORT_TERM", coreAlloc.getOrDefault("SHORT_TERM", 0.0));
-        fundPctMap.put("EMERGENCY", coreAlloc.getOrDefault("EMERGENCY", 0.0));
-        fundPctMap.put("WEALTH", coreAlloc.getOrDefault("WEALTH", 0.0));
-        fundPctMap.put("UNALLOCATED", unallocatedPct);
-
-        Map<String, String> fundNameMap = Map.of(
-            "RETIREMENT", "Retirement Corpus",
-            "LONG_TERM", "Long-Term Goal Corpus",
-            "SHORT_TERM", "Short-Term Goal Corpus",
-            "EMERGENCY", "Emergency & Protection Corpus",
-            "WEALTH", "Wealth Creation Corpus",
-            "UNALLOCATED", "Unallocated Savings"
-        );
-
         List<Asset> existingAssets = assetRepository.findByUserId(dbUser.getId());
-        Map<String, Asset> assetMapByFund = new HashMap<>();
-        for (Asset a : existingAssets) {
-            if (a.getAssetType() != null) {
-                assetMapByFund.put(a.getAssetType(), a);
-            }
+        
+        if (existingAssets.isEmpty()) {
+            Asset unallocated = Asset.builder()
+                    .user(dbUser)
+                    .name("Unallocated Savings")
+                    .assetType("UNALLOCATED")
+                    .currentValue(manualTotalSavings)
+                    .fundAllocations("[]")
+                    .build();
+            assetRepository.save(unallocated);
         }
+    }
 
-        for (Map.Entry<String, Double> entry : fundPctMap.entrySet()) {
-            String fundId = entry.getKey();
-            Double pct = entry.getValue();
-            double val = Math.round(manualTotalSavings * (pct / 100.0));
-
-            Asset asset = assetMapByFund.get(fundId);
-            if (asset != null) {
-                asset.setCurrentValue(val);
-                assetRepository.save(asset);
-            } else if (val > 0 || !"RETIREMENT".equals(fundId)) {
-                Asset newAsset = Asset.builder()
-                        .user(dbUser)
-                        .name(fundNameMap.getOrDefault(fundId, fundId))
-                        .assetType(fundId)
-                        .currentValue(val)
-                        .fundAllocations("[]")
-                        .build();
-                assetRepository.save(newAsset);
-            }
+    @org.springframework.transaction.annotation.Transactional
+    public void adjustUnallocatedSavings(User user, double delta) {
+        if (user == null || user.getId() == null || delta == 0.0) return;
+        List<Asset> assets = assetRepository.findByUserId(user.getId());
+        Asset unalloc = assets.stream().filter(a -> "UNALLOCATED".equals(a.getAssetType())).findFirst().orElse(null);
+        if (unalloc != null) {
+            unalloc.setCurrentValue((unalloc.getCurrentValue() != null ? unalloc.getCurrentValue() : 0.0) + delta);
+            assetRepository.save(unalloc);
         }
     }
 }

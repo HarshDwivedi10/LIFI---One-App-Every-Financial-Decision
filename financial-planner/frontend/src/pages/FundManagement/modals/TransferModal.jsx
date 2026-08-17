@@ -20,7 +20,7 @@ export default function TransferModal({
       <div className="fm-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
         <div className="fm-modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '20px' }}>🔄</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
             <h3>Transfer Funds</h3>
           </div>
           <button className="fm-modal-close" onClick={onClose}>

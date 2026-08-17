@@ -40,8 +40,10 @@ public class ChatController {
     }
 
     @GetMapping("/api/chat/my-coach")
-    public ResponseEntity<?> getMyCoach(@AuthenticationPrincipal User user) {
-        if (user.getAssignedCoach() != null) {
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> getMyCoach(@AuthenticationPrincipal User currentUser) {
+        User user = userRepository.findById(currentUser.getId()).orElse(null);
+        if (user != null && user.getAssignedCoach() != null) {
             User coach = user.getAssignedCoach();
             return ResponseEntity.ok(new PartnerDTO(coach.getId(), coach.getName(), coach.getRole().name()));
         }

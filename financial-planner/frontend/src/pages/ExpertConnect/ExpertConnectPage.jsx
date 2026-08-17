@@ -69,6 +69,7 @@ export default function ExpertConnectPage() {
       currentUser: user,
       onSuccess: () => {
         fetchCoaches();
+        window.dispatchEvent(new Event('coachHired'));
       }
     });
   };
@@ -127,17 +128,11 @@ export default function ExpertConnectPage() {
         <HiredCoachView coach={hiredCoach} onOpenChat={(c) => setActiveChatCoach(c)} />
       ) : (
         <>
-          {/* Top Header */}
-          <div className="expert-header">
-            <h1 className="expert-title">Financial Expert Connect</h1>
-            <p className="expert-subtitle">
-              Browse expert coaches, review their experience and resume, and hire the right coach for your financial journey.
-            </p>
-          </div>
+
 
           {displayedCoaches.length === 0 ? (
             <div className="expert-empty-state">
-              <span>👥</span>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               <h3>No Approved Coaches Available</h3>
               <p>There are currently no approved financial coaches available on the platform. Once a coach registers and is approved by an administrator, their profile will appear here.</p>
             </div>
@@ -154,142 +149,102 @@ export default function ExpertConnectPage() {
 
           {/* Main Card View */}
           <div className="coach-display-card">
-            
-            {/* Split Grid: Left Profile Card | Right Resume/CV Card */}
-            <div className="coach-card-grid">
+                     {/* Unified Single Card UI */}
+            <div className="coach-single-card" style={{ padding: '32px' }}>
               
-              {/* LEFT SIDE: Coach Profile Details */}
-              <div className="coach-profile-side">
-                
-                {/* Avatar & Header Info */}
-                <div className="profile-header-group">
-                  <div className="profile-avatar-wrapper">
-                    {currentCoach.profilePictureBase64 ? (
-                      <img src={currentCoach.profilePictureBase64} alt={currentCoach.name} className="profile-avatar-img" />
-                    ) : (
-                      <div className="profile-avatar-fallback">
-                        <span className="avatar-initial">{currentCoach.name?.charAt(0).toUpperCase()}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="profile-identity">
-                    <h2 className="coach-name">{currentCoach.name}</h2>
-                    <div className="coach-designation">{currentCoach.title || 'Financial Planning Coach'}</div>
-                    <div className="coach-location">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      {currentCoach.location || 'Mumbai, India'}
+              {/* Top Row: Avatar + Identity + Contacts */}
+              <div style={{ display: 'flex', gap: '24px', alignItems: 'center', marginBottom: '24px' }}>
+                <div className="profile-avatar-wrapper" style={{ width: '100px', height: '100px', flexShrink: 0 }}>
+                  {currentCoach.profilePictureBase64 ? (
+                    <img src={currentCoach.profilePictureBase64} alt={currentCoach.name} className="profile-avatar-img" />
+                  ) : (
+                    <div className="profile-avatar-fallback">
+                      <span className="avatar-initial" style={{ fontSize: '32px' }}>{currentCoach.name?.charAt(0).toUpperCase()}</span>
                     </div>
+                  )}
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <h2 className="coach-name" style={{ fontSize: '28px', marginBottom: '4px' }}>{currentCoach.name}</h2>
+                  <div className="coach-designation" style={{ color: '#818CF8', fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>{currentCoach.title || 'Financial Planning Coach'}</div>
+                  <div className="coach-location" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9CA3AF', fontSize: '14px' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {currentCoach.location || 'Mumbai, India'}
                   </div>
                 </div>
 
-                {/* Badges Row */}
-                <div className="coach-badges-row">
-                  <div className="stat-pill exp-pill">
-                    <span className="pill-icon">💼</span>
-                    <span className="pill-text">{currentCoach.yearsExperience || '10+ Years'}</span>
-                    <span className="pill-sub">Experience</span>
-                  </div>
-                  <div className="stat-pill rating-pill">
-                    <span className="pill-icon">⭐</span>
-                    <span className="pill-text">{currentCoach.rating || 4.9}/5</span>
-                    <span className="pill-sub">({currentCoach.clientCount || '120+ Clients'})</span>
-                  </div>
-                </div>
-
-                {/* About Coach */}
-                <div className="profile-section">
-                  <h3 className="section-title">About Coach</h3>
-                  <p className="about-text">{currentCoach.aboutMe}</p>
-                </div>
-
-                {/* Expertise List */}
-                <div className="profile-section">
-                  <h3 className="section-title">Expertise</h3>
-                  <ul className="expertise-checklist">
-                    {getExpertiseList(currentCoach.expertise).map((item, idx) => (
-                      <li key={idx}>
-                        <span className="check-icon">✓</span>
-                        <span className="check-text">{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Action Buttons: Chat & Download CV */}
-                <div className="profile-action-stack">
-                  <button 
-                    className="free-chat-btn"
-                    onClick={() => setActiveChatCoach(currentCoach)}
-                  >
-                    💬 {currentCoach.hiredByCurrentUser ? 'Chat with Coach' : 'Free 10-Min Chat'}
-                  </button>
-
-                  <button className="download-cv-btn" onClick={handleDownloadCV}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download Uploaded CV (PDF)
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#9CA3AF', minWidth: '220px' }}>
+                  {currentCoach.email && <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>{currentCoach.email}</div>}
+                  {currentCoach.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>{currentCoach.phone}</div>}
+                  {currentCoach.linkedIn && <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>{currentCoach.linkedIn}</div>}
                 </div>
               </div>
 
-              {/* RIGHT SIDE: Live Interactive Resume / CV Document */}
-              <div className="coach-resume-side">
-                
-                {/* Resume Header Tag */}
-                <div className="resume-topbar">
-                  <div className="resume-tag">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    Resume / CV
+              <div style={{ color: '#D1D5DB', fontSize: '15px', lineHeight: '1.6', marginBottom: '24px' }}>
+                {currentCoach.professionalSummary || currentCoach.aboutMe}
+              </div>
+
+              {/* Badges Row */}
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
+                <div style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ background: '#232533', padding: '10px', borderRadius: '10px', color: '#fff' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
                   </div>
-                  <div className="resume-page-num">{currentIndex + 1} / {displayedCoaches.length}</div>
+                  <div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>{currentCoach.yearsExperience || '10+ Years'}</div>
+                    <div style={{ fontSize: '13px', color: '#9CA3AF' }}>Experience</div>
+                  </div>
                 </div>
-
-                {/* Resume Printable Container */}
-                <div className="resume-sheet">
-                  
-                  {/* Resume Header */}
-                  <div className="sheet-header">
-                    <div className="sheet-title-group">
-                      <h2 className="sheet-name">{currentCoach.name}</h2>
-                      <div className="sheet-subtitle">{currentCoach.title || 'Financial Planning Coach'}</div>
-                    </div>
-                    <div className="sheet-contact-group">
-                      {currentCoach.email && <div className="contact-line">✉️ {currentCoach.email}</div>}
-                      {currentCoach.phone && <div className="contact-line">📞 {currentCoach.phone}</div>}
-                      {currentCoach.location && <div className="contact-line">📍 {currentCoach.location}</div>}
-                      {currentCoach.linkedIn && <div className="contact-line">🔗 {currentCoach.linkedIn}</div>}
-                    </div>
+                
+                <div style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ background: '#232533', padding: '10px', borderRadius: '10px', color: '#f59e0b' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                   </div>
-
-                  <hr className="sheet-divider" />
-
-                  {/* Professional Summary */}
-                  <div className="sheet-section">
-                    <h3 className="sheet-section-title">Professional Summary</h3>
-                    <p className="sheet-summary-text">
-                      {currentCoach.professionalSummary || currentCoach.aboutMe}
-                    </p>
+                  <div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>{currentCoach.rating || 4.9}/5</div>
+                    <div style={{ fontSize: '13px', color: '#9CA3AF' }}>({currentCoach.clientCount || '120+ Clients'})</div>
                   </div>
-
-                  {/* Experience Timeline */}
-                  <div className="sheet-section">
-                    <h3 className="sheet-section-title">Experience</h3>
-                    <div className="timeline-container">
-                      {renderTimelineText(currentCoach.experienceDetails)}
-                    </div>
-                  </div>
-
-                  {/* Education Timeline */}
-                  <div className="sheet-section">
-                    <h3 className="sheet-section-title">Education</h3>
-                    <div className="timeline-container">
-                      {renderTimelineText(currentCoach.educationDetails)}
-                    </div>
-                  </div>
-
                 </div>
               </div>
 
+              {/* Expertise List */}
+              <div style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#818CF8', fontWeight: 700, marginBottom: '16px' }}>Expertise</h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                  {getExpertiseList(currentCoach.expertise).map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', fontSize: '13px', color: '#D1D5DB' }}>
+                      <span style={{ color: '#818CF8' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Experience Timeline */}
+              <div style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#818CF8', fontWeight: 700, marginBottom: '16px' }}>Experience</h3>
+                <div className="timeline-container">
+                  {renderTimelineText(currentCoach.experienceDetails)}
+                </div>
+              </div>
+
+              {/* Education Timeline */}
+              <div style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#818CF8', fontWeight: 700, marginBottom: '16px' }}>Education</h3>
+                <div className="timeline-container">
+                  {renderTimelineText(currentCoach.educationDetails)}
+                </div>
+              </div>
+
+              <button 
+                onClick={handleDownloadCV}
+                style={{ width: '100%', padding: '16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#D1D5DB', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', transition: 'all 0.2s' }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download CV (PDF)
+              </button>
             </div>
 
             {/* Bottom Footer Bar: Pricing & Hire Action */}
@@ -309,28 +264,37 @@ export default function ExpertConnectPage() {
                 </div>
               </div>
 
-              <div className="footer-action">
+              <div className="footer-action" style={{ display: 'flex', gap: '12px' }}>
                 <button 
-                  className={`hire-btn ${currentCoach.hiredByCurrentUser ? 'hired' : ''}`}
-                  onClick={() => handleHireCoach(currentCoach)}
-                  disabled={hiring || currentCoach.hiredByCurrentUser}
+                  className="free-chat-btn"
+                  onClick={() => setActiveChatCoach(currentCoach)}
+                  style={{ background: '#6366F1', color: '#fff', border: 'none', padding: '14px 24px', borderRadius: '8px', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', transition: 'all 0.2s' }}
+                  onMouseOver={(e) => { e.currentTarget.style.opacity = '0.9'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  {currentCoach.hiredByCurrentUser ? (
-                    <>
-                      <span>✓</span> Coach Hired & Active
-                    </>
-                  ) : (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                      {hiring ? 'Processing Hiring...' : 'Hire Coach & Pay'}
-                    </>
-                  )}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  {currentCoach.hiredByCurrentUser ? 'Chat with Coach' : 'Free 10-Min Chat'}
                 </button>
+
+                {!currentCoach.hiredByCurrentUser && (
+                  <button 
+                    className="hire-btn"
+                    onClick={() => handleHireCoach(currentCoach)}
+                    disabled={hiring}
+                    style={{ background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', padding: '14px 24px', borderRadius: '8px', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', transition: 'all 0.2s' }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                    {hiring ? 'Processing...' : 'Hire Coach & Pay'}
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="footer-microcopy">
-              🔒 You will be redirected to a secure payment gateway to complete your payment.
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              You will be redirected to a secure payment gateway to complete your payment.
             </div>
 
           </div>

@@ -1,7 +1,7 @@
 import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { NotificationProvider } from './context/NotificationContext';
+
 import AppLayout from './components/AppLayout';
 import LoginPage from './pages/Login/LoginPage';
 import RegisterPage from './pages/Login/RegisterPage';
@@ -12,6 +12,7 @@ import InvestmentPlannerPage from './pages/InvestmentPlanner/InvestmentPlannerPa
 import GoalManagementPage from './pages/GoalManagement/GoalManagementPage';
 import FundManagementPage from './pages/FundManagement/FundManagementPage';
 import ExpertConnectPage from './pages/ExpertConnect/ExpertConnectPage';
+import FundTransferPage from './pages/FundTransfer/FundTransferPage';
 import DashboardPage from './pages/Home/HomePage';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import CoachManagement from './pages/Admin/CoachManagement';
@@ -64,7 +65,7 @@ export default function App() {
       }} />
       <Router>
         <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-muted)' }}>Loading...</div>}>
-        <NotificationProvider>
+
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
@@ -122,10 +123,12 @@ export default function App() {
             <Route path="retirement-planner" element={<RetirementPlannerPage />} />
             <Route path="goal-management" element={<GoalManagementPage />} />
             <Route path="fund-management" element={<FundManagementPage />} />
+            <Route path="fund-transfer" element={<FundTransferPage />} />
+            <Route path="fund_transfer" element={<Navigate to="/fund-transfer" replace />} />
             <Route path="expert-connect" element={<ExpertConnectPage />} />
           </Route>
         </Routes>
-        </NotificationProvider>
+
         </Suspense>
       </Router>
     </AuthProvider>
